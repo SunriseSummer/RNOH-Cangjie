@@ -1,0 +1,11 @@
+/node_modules
+/.preview
+/build
+/.cxx
+./package-lock.json
+*.tgz
+/oh_modules
+/generated
+
+**/IDL_Dependencies_List~
+**/build-script-cache

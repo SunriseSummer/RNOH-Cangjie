@@ -1,0 +1,21 @@
+{
+  "apiType": "stageMode",
+  "targets": [
+    {
+      "name": "default",
+      "runtimeOS": "HarmonyOS",
+    },
+    {
+      "name": "cangjie",
+      "runtimeOS": "HarmonyOS"
+    }
+  ],
+  "buildOption": {
+    "cangjieOptions": {
+      "path": "./src/main/cangjie/cjpm.toml",
+    },
+    "arkOptions": {
+      "byteCodeHar": false
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "apiType": 'stageMode',
+  "buildOption": {
+    "externalNativeOptions": {
+      "path": "./src/main/cpp/CMakeLists.txt",
+      "arguments": "",
+      "cppFlags": "-s",
+    },
+    "nativeLib": {
+      "filter": {
+        "select": [{
+          "package": "react_native_openharmony",
+          "include": [
+            "**/libreact_cangjie_bridge.so",
+            "**/libreact_cangjie_bridge_turbomodules.so"]
+        }]
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "default",
+      "runtimeOS": "HarmonyOS"
+    },
+    {
+      "name": "ohosTest",
+    }
+  ]
+}
