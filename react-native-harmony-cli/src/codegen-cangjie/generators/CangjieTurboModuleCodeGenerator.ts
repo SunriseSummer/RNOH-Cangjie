@@ -117,7 +117,6 @@ function buildCppArgDeclaration(
   switch (kind) {
     case 'string':
       return {
-        argName: paramName,
         callArg: `${paramName}.c_str()`,
         lines: [
           `auto ${paramName} = args[${index}].asString(rt).utf8(rt);`,
@@ -125,13 +124,11 @@ function buildCppArgDeclaration(
       };
     case 'boolean':
       return {
-        argName: paramName,
         callArg: paramName,
         lines: [`auto ${paramName} = args[${index}].getBool();`],
       };
     case 'number':
       return {
-        argName: paramName,
         callArg: paramName,
         lines: [
           `auto ${paramName} = static_cast<int32_t>(args[${index}].asNumber());`,
@@ -145,7 +142,6 @@ function buildCppArgDeclaration(
       const defaultJson =
         kind === 'array' ? DEFAULT_EMPTY_JSON_ARRAY : DEFAULT_EMPTY_JSON_OBJECT;
       return {
-        argName: jsonName,
         callArg: `${jsonName}.c_str()`,
         lines: [
           `const std::string ${jsonName}DefaultValue = "${defaultJson}";`,
