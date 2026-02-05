@@ -217,7 +217,9 @@ func CGetSize(promise: PromiseHolder, uri: CString): Unit {
 ```
 
 ### 2) Cangjie 调用 C++ 更新 ImageSourceMap
+
 **注意：这部分内容是和 ImageLoader 业务相关的，不属于仓颉 TurboModule 通用方案**
+
 在下载完成后，Cangjie 调用 `CJ_UpdateImageSourceMap`（C++ 提供），C++ 会通过 `dlopen` 从 `librnoh_app.so` 解析 `onImageSourceMapUpdate` 并执行：
 
 ```cangjie
