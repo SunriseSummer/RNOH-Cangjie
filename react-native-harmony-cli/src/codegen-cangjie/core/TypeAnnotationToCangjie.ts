@@ -7,7 +7,15 @@
 
 import { TypeAnnotation } from '../../codegen/core/TypeAnnotationToTS';
 
+/**
+ * 将 RN Codegen 的类型注解转换为 Cangjie 侧的类型字符串。
+ * 主要用于生成 TurboModule 方法签名与桥接声明。
+ */
 export class TypeAnnotationToCangjie {
+  /**
+   * 将类型注解转换为 Cangjie 参数类型。
+   * 缺省时返回 String，确保模板具备可编译性。
+   */
   convert(typeAnnotation: TypeAnnotation | undefined): string {
     if (!typeAnnotation) {
       return 'String';
@@ -57,6 +65,10 @@ export class TypeAnnotationToCangjie {
     }
   }
 
+  /**
+   * 将返回类型注解转换为 Cangjie 类型。
+   * Promise 返回值会直接取内部 elementType。
+   */
   convertReturnType(typeAnnotation: TypeAnnotation | undefined): string {
     if (!typeAnnotation) {
       return 'Unit';

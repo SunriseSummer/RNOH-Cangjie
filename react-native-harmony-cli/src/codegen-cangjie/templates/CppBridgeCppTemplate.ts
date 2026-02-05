@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * C++ 桥接实现模板。
+ * 负责保存回调指针并提供 C++ 包装层调用入口。
+ */
+
 const TEMPLATE = `
 /*
 {{#codegenNoticeLines}}
@@ -97,18 +102,30 @@ export class CppBridgeCppTemplate {
     private codegenNoticeLines: string[]
   ) {}
 
+  /**
+   * 添加回调指针定义。
+   */
   addCallback(callback: Callback) {
     this.callbacks.push(callback);
   }
 
+  /**
+   * 添加回调注册函数实现描述。
+   */
   addRegister(register: Register) {
     this.registers.push(register);
   }
 
+  /**
+   * 添加桥接函数实现描述。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 渲染模板并输出桥接实现源码。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       headerName: this.headerName,

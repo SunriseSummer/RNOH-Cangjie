@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * C++ <-> Cangjie 桥接头文件模板。
+ * 定义回调类型、注册函数与桥接 API。
+ */
+
 const TEMPLATE = `
 #ifndef {{headerGuard}}
 #define {{headerGuard}}
@@ -63,18 +68,30 @@ export class CppBridgeHTemplate {
     private isEnabledName: string
   ) {}
 
+  /**
+   * 添加回调类型声明。
+   */
   addCallback(callback: Callback) {
     this.callbacks.push(callback);
   }
 
+  /**
+   * 添加回调注册函数声明。
+   */
   addRegister(register: Register) {
     this.registers.push(register);
   }
 
+  /**
+   * 添加桥接函数声明。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 渲染模板并输出头文件内容。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       headerGuard: this.headerGuard,

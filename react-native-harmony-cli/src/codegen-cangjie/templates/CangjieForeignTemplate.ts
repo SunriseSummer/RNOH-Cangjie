@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * Cangjie foreign 声明模板。
+ * 声明 C++ 侧注册回调的函数签名。
+ */
+
 const TEMPLATE = `
 /*
 {{#codegenNoticeLines}}
@@ -35,10 +40,16 @@ export class CangjieForeignTemplate {
 
   constructor(private packageName: string, private codegenNoticeLines: string[]) {}
 
+  /**
+   * 添加一条注册回调声明。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 渲染模板并输出 foreign 源码。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       packageName: this.packageName,

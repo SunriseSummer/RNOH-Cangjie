@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * C++ TurboModule 实现模板。
+ * 负责生成 methodMap_ 映射与 C++ -> Cangjie 的调用封装。
+ */
+
 const TEMPLATE = `
 /**
 {{#codegenNoticeLines}}
@@ -79,10 +84,16 @@ export class CppTurboModuleCppTemplate {
     private codegenNoticeLines: string[]
   ) {}
 
+  /**
+   * 添加方法实现描述。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 渲染模板并输出 C++ 实现文件内容。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       className: this.className,

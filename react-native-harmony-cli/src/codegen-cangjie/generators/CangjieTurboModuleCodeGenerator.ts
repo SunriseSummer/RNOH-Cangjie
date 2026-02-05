@@ -21,11 +21,14 @@ import {
   CppTurboModuleHTemplate,
 } from '../templates';
 
-// Default placeholder for object/array arguments when a value is missing.
+// object/array 缺省时使用的 JSON 字符串占位符，避免序列化失败。
 const DEFAULT_EMPTY_JSON_STRING = '{}';
 
 type ParamKind = 'string' | 'boolean' | 'number' | 'object' | 'array' | 'unknown';
 
+/**
+ * 处理可空类型，便于后续按实际类型分支。
+ */
 function unwrapNullable(typeAnnotation: TypeAnnotation): TypeAnnotation {
   if (typeAnnotation.type === 'NullableTypeAnnotation') {
     return typeAnnotation.typeAnnotation;
@@ -33,6 +36,9 @@ function unwrapNullable(typeAnnotation: TypeAnnotation): TypeAnnotation {
   return typeAnnotation;
 }
 
+/**
+ * 根据类型注解分类，决定桥接侧的参数处理方式。
+ */
 function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
   const resolved = unwrapNullable(typeAnnotation);
   switch (resolved.type) {
@@ -62,6 +68,9 @@ function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
   }
 }
 
+/**
+ * 获取 C++ 桥接层参数类型（用于回调声明）。
+ */
 function getCppBridgeType(typeAnnotation: TypeAnnotation): string {
   switch (getParamKind(typeAnnotation)) {
     case 'string':
@@ -77,6 +86,9 @@ function getCppBridgeType(typeAnnotation: TypeAnnotation): string {
   }
 }
 
+/**
+ * 获取 Cangjie FFI 侧参数类型。
+ */
 function getCangjieFfiType(typeAnnotation: TypeAnnotation): string {
   switch (getParamKind(typeAnnotation)) {
     case 'string':
@@ -92,6 +104,9 @@ function getCangjieFfiType(typeAnnotation: TypeAnnotation): string {
   }
 }
 
+/**
+ * 构建 C++ 包装层的参数解析语句。
+ */
 function buildCppArgDeclaration(
   paramName: string,
   typeAnnotation: TypeAnnotation,
@@ -142,6 +157,9 @@ function buildCppArgDeclaration(
   }
 }
 
+/**
+ * 构建 Cangjie 侧参数转换逻辑（CString -> String）。
+ */
 function buildCangjieArgConversion(paramName: string, ffiType: string) {
   if (ffiType !== 'CString') {
     return { convertedName: paramName, lines: [] };
@@ -153,6 +171,10 @@ function buildCangjieArgConversion(paramName: string, ffiType: string) {
   };
 }
 
+/**
+ * Cangjie TurboModule CodeGen 主生成器。
+ * 输出 C++ 包装层、C++/Cangjie 桥接层与 Cangjie 模板代码。
+ */
 export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
   constructor(
     private cppOutputPath: AbsolutePath,
@@ -162,6 +184,9 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
     private codegenNoticeLines: string[]
   ) {}
 
+  /**
+   * 基于 SpecSchema 生成多份代码文件内容。
+   */
   generate(schema: SpecSchema): Map<AbsolutePath, string> {
     if (schema.type !== 'NativeModule') {
       throw new CodegenError({

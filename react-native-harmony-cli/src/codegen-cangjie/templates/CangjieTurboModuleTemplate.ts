@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * Cangjie TurboModule 类模板。
+ * 用于生成模块骨架、方法签名与基础类型别名。
+ */
+
 const TEMPLATE = `
 /**
 {{#codegenNoticeLines}}
@@ -72,24 +77,39 @@ export class CangjieTurboModuleTemplate {
     private codegenNoticeLines: string[]
   ) {}
 
+  /**
+   * 添加模块方法签名。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 添加类型别名声明。
+   */
   addAlias(alias: Alias) {
     this.aliases.push(alias);
   }
 
+  /**
+   * 添加枚举占位类型声明（当前以别名形式输出）。
+   */
   addEnum(enumModel: EnumModel) {
     this.enumModels.push(enumModel);
   }
 
+  /**
+   * 追加 import 语句，避免重复导入。
+   */
   addImport(importName: string) {
     if (!this.imports.find((item) => item.name === importName)) {
       this.imports.push({ name: importName });
     }
   }
 
+  /**
+   * 渲染模板并输出完整 Cangjie 源码。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       className: this.className,

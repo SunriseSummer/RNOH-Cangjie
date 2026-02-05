@@ -5,6 +5,11 @@
  * LICENSE-MIT file in the root directory of this source tree.
  */
 
+/**
+ * Cangjie TurboModule 模板集合导出。
+ * 各模板分别负责 C++ 包装层与 Cangjie FFI/模块骨架输出。
+ */
+
 export * from './CangjieTurboModuleTemplate';
 export * from './CangjieBridgeTemplate';
 export * from './CangjieForeignTemplate';

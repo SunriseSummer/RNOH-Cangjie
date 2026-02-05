@@ -5,4 +5,9 @@
  * LICENSE-MIT file in the root directory of this source tree.
  */
 
+/**
+ * Cangjie TurboModule 生成器导出。
+ * 用于组织不同的生成流程并供 CLI 调用。
+ */
+
 export * from './CangjieTurboModuleCodeGenerator';

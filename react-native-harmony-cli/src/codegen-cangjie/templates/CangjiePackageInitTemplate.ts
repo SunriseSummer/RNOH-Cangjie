@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * Cangjie 包初始化模板。
+ * 用于生成 packageInit 函数，注册回调并实例化 TurboModule。
+ */
+
 const TEMPLATE = `
 /*
 {{#codegenNoticeLines}}
@@ -45,10 +50,16 @@ export class CangjiePackageInitTemplate {
     private codegenNoticeLines: string[]
   ) {}
 
+  /**
+   * 添加回调注册语句。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 渲染模板并输出 packageinit.cj。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       className: this.className,

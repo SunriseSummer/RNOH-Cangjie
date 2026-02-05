@@ -12,6 +12,10 @@ import { AbsolutePath } from '../src/core';
 import { UberSchema } from '../src/codegen';
 import { CangjieTurboModuleCodeGenerator } from '../src/codegen-cangjie';
 
+/**
+ * Cangjie TurboModule CodeGen 冒烟测试。
+ * 验证生成的 Cangjie 包路径与 C++ 包装层关键内容是否存在。
+ */
 describe('CangjieTurboModuleCodeGenerator', () => {
   let tmpDir: tmp.DirResult | null = null;
 

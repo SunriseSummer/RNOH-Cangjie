@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * C++ TurboModule 头文件模板。
+ * 定义基于 rnoh::TurboModule 的包装类与静态方法声明。
+ */
+
 const TEMPLATE = `
 /**
 {{#codegenNoticeLines}}
@@ -45,10 +50,16 @@ export class CppTurboModuleHTemplate {
 
   constructor(private className: string, private codegenNoticeLines: string[]) {}
 
+  /**
+   * 添加方法声明。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 渲染模板并输出头文件内容。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       className: this.className,

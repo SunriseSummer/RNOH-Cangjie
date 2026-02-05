@@ -7,6 +7,11 @@
 
 import mustache from 'mustache';
 
+/**
+ * Cangjie 桥接层模板（@C 导出函数）。
+ * 负责把 C++ FFI 调用转发至 Cangjie TurboModule。
+ */
+
 const TEMPLATE = `
 /*
 {{#codegenNoticeLines}}
@@ -72,16 +77,25 @@ export class CangjieBridgeTemplate {
 
   constructor(private packageName: string, private codegenNoticeLines: string[]) {}
 
+  /**
+   * 添加桥接函数描述。
+   */
   addMethod(method: Method) {
     this.methods.push(method);
   }
 
+  /**
+   * 追加 import 语句，避免重复。
+   */
   addImport(importName: string) {
     if (!this.imports.find((item) => item.name === importName)) {
       this.imports.push({ name: importName });
     }
   }
 
+  /**
+   * 渲染模板并输出桥接层 Cangjie 源码。
+   */
   build(): string {
     return mustache.render(TEMPLATE.trimStart(), {
       packageName: this.packageName,
