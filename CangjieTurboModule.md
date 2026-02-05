@@ -153,7 +153,7 @@ C++ 侧负责将复杂参数转成 JSON 字符串传入 Cangjie，例如 `getSiz
 
 ```cpp
 // C++ 将 headers / uris 组装为 JSON 字符串
-std::string headersJson = "{}"; // 默认空对象（未传 headers 时使用）
+std::string headersJson = "{}"; // 默认空对象（未传入 headers 时使用）
 if (count > 1 && args[1].isObject()) {
   auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");
   auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");
@@ -212,7 +212,7 @@ static func OnImageSourceMapUpdate(rnInstanceId: UInt64, remoteUri: String, file
 static OnImageSourceMapUpdateFunc g_onImageSourceMapUpdateFunc = nullptr;
 
 // Cangjie 侧使用 mallocCString 分配内存，C++ 在此处释放以避免泄漏（因此为 char*）。
-// 调用后 Cangjie 不应再访问这些指针。
+// 调用后 Cangjie 不应缓存或再访问这些指针。
 void CJ_UpdateImageSourceMap(unsigned long rnInstanceId, char* remoteUri, char* fileUri) {
   if (!loadOnImageSourceMapUpdateFunction()) { ... }
   g_onImageSourceMapUpdateFunc(rnInstanceId, remoteUri, fileUri);
