@@ -123,9 +123,9 @@ function buildCppArgDeclaration(
     case 'unknown':
     default: {
       const jsonName = `${paramName}Json`;
-       return {
-         argName: jsonName,
-         lines: [
+      return {
+        argName: jsonName,
+        lines: [
           `const std::string ${jsonName}Default = ${DEFAULT_EMPTY_JSON_OBJECT};`,
           `std::string ${jsonName} = ${jsonName}Default;`,
           `if (count > ${index} && args[${index}].isObject()) {`,

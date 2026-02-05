@@ -13,9 +13,20 @@ import { UberSchema } from '../src/codegen';
 import { CangjieTurboModuleCodeGenerator } from '../src/codegen-cangjie';
 
 describe('CangjieTurboModuleCodeGenerator', () => {
+  let tmpDir: tmp.DirResult | null = null;
+
+  beforeEach(() => {
+    tmpDir = tmp.dirSync({ unsafeCleanup: true });
+  });
+
+  afterEach(() => {
+    tmpDir?.removeCallback();
+    tmpDir = null;
+  });
+
   it('generates Cangjie and C++ templates for turbo modules', () => {
-    const tmpDir = tmp.dirSync().name;
-    const specPath = path.join(tmpDir, 'NativeSampleSpec.ts');
+    const tempDirPath = tmpDir!.name;
+    const specPath = path.join(tempDirPath, 'NativeSampleSpec.ts');
     fs.writeFileSync(
       specPath,
       `
@@ -35,7 +46,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       new AbsolutePath(specPath),
     ]);
     const [schema] = uberSchema.findAllSpecSchemasByType('NativeModule');
-    const outputRoot = new AbsolutePath(tmpDir);
+    const outputRoot = new AbsolutePath(tempDirPath);
     const generator = new CangjieTurboModuleCodeGenerator(
       outputRoot.copyWithNewSegment('cpp'),
       outputRoot.copyWithNewSegment('cpp-bridge'),
