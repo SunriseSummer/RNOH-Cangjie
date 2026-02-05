@@ -110,12 +110,16 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       'package reactnative_ohcj.TestPackage.turboModules.Sample'
     );
     expect(cangjieContent).toContain('public class SampleTurboModule');
+    expect(cangjieContent).toContain('fetchCache');
     expect(cangjieContent).toContain('getTotal(multiplier: ?Float64, tag: ?String)');
+    expect(cangjieContent).toContain('getCacheKeys');
     expect(cppContent).toContain('TurboModule::Context ctx');
     expect(cppContent).toContain('getValue');
+    expect(cppContent).toContain('fetchCache');
     expect(cppContent).toContain('label.c_str()');
     expect(cppContent).toContain('itemsJsonDefaultValue = "[]"');
     expect(cppContent).toContain('double multiplier = 0.0');
+    expect(cppContent).toContain('if (count > 1 && args[1].isString())');
     expect(cppContent).toContain('react::Bridging<CJ_Object>::toJs');
     expect(cangjieBridgeContent).toContain('PromiseResolveJson');
     expect(cangjieBridgeContent).toContain('CJ_ObjectKind');
