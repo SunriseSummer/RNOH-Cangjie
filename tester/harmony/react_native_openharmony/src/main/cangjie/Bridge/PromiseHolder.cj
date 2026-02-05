@@ -127,7 +127,7 @@ public func PromiseResolve(promise: PromiseHolder, data: JsonValue): Unit {
     }
 }
 
-// Resolve the promise with JSON string value (object/array passthrough)
+// 直接透传 JSON 字符串，不做解析或校验
 public func PromiseResolveJson(promise: PromiseHolder, json: String): Unit {
     unsafe {
         let cJsonDataString = LibC.mallocCString(json).getChars()
