@@ -24,13 +24,14 @@ describe('CangjieTurboModuleCodeGenerator', () => {
   });
 
   afterEach(() => {
-    tmpDir?.removeCallback();
+    // tmpDir?.removeCallback(); // 暂时不删除临时文件，我需要打开文件人工校验
     tmpDir = null;
   });
 
   it('generates Cangjie and C++ templates for turbo modules', () => {
     const tempDirPath = tmpDir!.name;
     const specPath = path.join(tempDirPath, 'NativeSampleSpec.ts');
+    console.log(specPath)
     fs.writeFileSync(
       specPath,
       `
@@ -61,6 +62,16 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     );
 
     const files = generator.generate(schema);
+    // 保存生成的模板文件，以供人工校验
+    files.forEach((value, key) => {
+        console.log(key.toString())
+        let dir = key.getDirectoryPath().toString()
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(key.toString(), value)
+    })
+
     const cangjieFilePath = outputRoot
       .copyWithNewSegment('cangjie', 'Sample', 'SampleTurboModule.cj')
       .getValue();
