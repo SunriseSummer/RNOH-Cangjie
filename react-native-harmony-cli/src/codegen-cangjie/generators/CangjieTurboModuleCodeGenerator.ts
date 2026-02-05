@@ -123,10 +123,11 @@ function buildCppArgDeclaration(
     case 'unknown':
     default: {
       const jsonName = `${paramName}Json`;
-      return {
-        argName: jsonName,
-        lines: [
-          `std::string ${jsonName} = ${DEFAULT_EMPTY_JSON_OBJECT};`,
+       return {
+         argName: jsonName,
+         lines: [
+          `const std::string ${jsonName}Default = ${DEFAULT_EMPTY_JSON_OBJECT};`,
+          `std::string ${jsonName} = ${jsonName}Default;`,
           `if (count > ${index} && args[${index}].isObject()) {`,
           `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
           `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
@@ -227,9 +228,11 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
     });
 
     Object.entries(schema.enumMap).forEach(([name, enumSpec]) => {
+      const enumMembers = Array.isArray(enumSpec.members)
+        ? enumSpec.members
+        : [];
       const enumType =
-        enumSpec.members.length > 0 &&
-        typeof enumSpec.members[0].value === 'number'
+        enumMembers.length > 0 && typeof enumMembers[0].value === 'number'
           ? 'Int32'
           : 'String';
       cangjieTemplate.addEnum({ name, type: enumType });
