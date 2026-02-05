@@ -33,7 +33,7 @@ public class {{className}} {
 
   {{#methods}}
   public func {{name}}({{{stringifiedArgs}}}): {{{returnType}}} {
-    throw Exception("Not implemented")
+    throw Exception("{{name}} not implemented")
   }
 
   {{/methods}}
