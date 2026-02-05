@@ -65,14 +65,14 @@
 | --- | --- | --- | --- | --- |
 | `string` | `String` | `CString` | `const char*` | 使用 `toString()` 转换 |
 | `boolean` | `Bool` | `Bool` | `bool` | 直接透传 |
-| `number` / `float` | `Int32` | `Int32` | `int32_t` | 默认模板，必要时手动调整 |
+| `number` / `float` | `Int32` | `Int32` | `int32_t` | 模板默认取整，需精度时请切换为 `Float64` 并同步调整 PromiseResolve |
 | `object` / `array` / `union` | `String` | `CString` | `const char*` | 默认 JSON 字符串 |
 | `RootTag` | `Int32` | `Int32` | `int32_t` | 与现有 ArkTS 逻辑一致 |
 
 说明：
 - 模板优先保证 **可编译**，复杂类型需开发者补充 JSON 解析逻辑。
 - 如需精确数值类型（如 `Float64`/`Int64`），在生成后手动调整即可。
-- C++ 侧对 `object/array` 参数的默认占位值为 `"{}"`，用于避免空值导致的 JSON 解析错误，必要时可按业务需求调整。
+- C++ 侧对 `object/array` 参数的默认占位值为 `"{}"`，用于避免空值导致的 JSON 解析错误。如需保留 `null/undefined` 语义，可在模板生成后调整默认值与判空逻辑。
 
 ## 集成步骤（需人工操作）
 
