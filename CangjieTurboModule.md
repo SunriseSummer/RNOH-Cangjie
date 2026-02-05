@@ -254,7 +254,7 @@ void CJ_UpdateImageSourceMap(unsigned long rnInstanceId, char* remoteUri, char* 
 
 - **C++ 调用 Cangjie**：通过 `register*Callback` 注册函数指针 + `ImageLoaderBridge` 转发。
 - **Promise/返回值桥接**：Cangjie 封装 `CJ_Object` 调用 `CJ_PromiseResolve`，C++ `Bridging<CJ_Object>` 转成 `jsi::Value`。
-- **类型转换**：复杂结构体通过 JSON 字符串在 C++ ↔ Cangjie 间转换。
+- **类型转换**：复杂结构体通过 JSON 字符串在 C++ 与 Cangjie 间转换。
 - **跨库回调**：Cangjie 调用 C++ 的 `CJ_UpdateImageSourceMap`，C++ 再动态链接到 `librnoh_app.so` 的 `onImageSourceMapUpdate`。
 
 该方案避免了 ArkTS 的性能瓶颈，同时保留了 RN TurboModule 的 Promise API 语义。
