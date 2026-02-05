@@ -22,6 +22,7 @@ export class TypeAnnotationToCangjie {
       case 'DoubleTypeAnnotation':
       case 'FloatTypeAnnotation':
       case 'NumberTypeAnnotation':
+        // Default to Int32 to align with existing PromiseResolve overloads.
         return 'Int32';
       case 'StringEnumTypeAnnotation':
         return 'String';

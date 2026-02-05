@@ -21,7 +21,8 @@ import {
   CppTurboModuleHTemplate,
 } from '../templates';
 
-const DEFAULT_JSON_VALUE = '"{}"';
+// Default placeholder for object/array arguments when a value is missing.
+const DEFAULT_EMPTY_JSON_OBJECT = '"{}"';
 
 type ParamKind = 'string' | 'boolean' | 'number' | 'object' | 'array' | 'unknown';
 
@@ -125,7 +126,7 @@ function buildCppArgDeclaration(
       return {
         argName: jsonName,
         lines: [
-          `std::string ${jsonName} = ${DEFAULT_JSON_VALUE};`,
+          `std::string ${jsonName} = ${DEFAULT_EMPTY_JSON_OBJECT};`,
           `if (count > ${index} && args[${index}].isObject()) {`,
           `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
           `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
@@ -240,7 +241,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       }
       const methodName = prop.name;
       const pascalName = Case.pascal(methodName);
-      const isAsync =
+      const returnsPromise =
         prop.typeAnnotation.returnTypeAnnotation.type ===
         'PromiseTypeAnnotation';
       const returnType = typeAnnotationToCangjie.convertReturnType(
@@ -282,8 +283,8 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       cppCppTemplate.addMethod({
         name: methodName,
         argsCount: prop.typeAnnotation.params.length,
-        arktsCall: isAsync ? 'callAsync' : 'call',
-        isAsync,
+        arktsCall: returnsPromise ? 'callAsync' : 'call',
+        isAsync: returnsPromise,
         cppArgDeclarations,
         cppCallArgs,
         cppCallArgsWithPromise,
@@ -304,7 +305,9 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       cppBridgeHeaderTemplate.addCallback({
         callbackReturnType: 'void',
         callbackName: callbackTypeName,
-        callbackParams: isAsync ? cppBridgeParamsWithPromise : cppBridgeParams,
+        callbackParams: returnsPromise
+          ? cppBridgeParamsWithPromise
+          : cppBridgeParams,
       });
       cppBridgeHeaderTemplate.addRegister({
         registerName: `register${pascalName}Callback`,
@@ -313,7 +316,9 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       cppBridgeHeaderTemplate.addMethod({
         returnType: 'void',
         name: methodName,
-        params: isAsync ? cppBridgeParamsWithPromise : cppBridgeParams,
+        params: returnsPromise
+          ? cppBridgeParamsWithPromise
+          : cppBridgeParams,
       });
 
       cppBridgeCppTemplate.addCallback({
@@ -328,14 +333,16 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       cppBridgeCppTemplate.addMethod({
         returnType: 'void',
         name: methodName,
-        params: isAsync ? cppBridgeParamsWithPromise : cppBridgeParams,
-        callArgs: isAsync
+        params: returnsPromise
+          ? cppBridgeParamsWithPromise
+          : cppBridgeParams,
+        callArgs: returnsPromise
           ? ['promiseHolder', ...prop.typeAnnotation.params.map((p) => p.name)].join(
               ', '
             )
           : prop.typeAnnotation.params.map((p) => p.name).join(', '),
         callbackName,
-        isAsync,
+        isAsync: returnsPromise,
         hasReturn: false,
       });
 
@@ -375,17 +382,19 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       bridgeTemplate.addMethod({
         name: methodName,
         cFunctionName: `C${pascalName}`,
-        stringifiedParams: isAsync ? cangjieParamsWithPromise : cangjieParams,
+        stringifiedParams: returnsPromise
+          ? cangjieParamsWithPromise
+          : cangjieParams,
         callArgs: callArgsString,
         argConversions,
-        isAsync,
+        isAsync: returnsPromise,
         asyncCallLine,
         asyncResolveLine,
         syncCallLine,
       });
       foreignTemplate.addMethod({
         registerName: `register${pascalName}Callback`,
-        callbackSignature: isAsync
+        callbackSignature: returnsPromise
           ? ['PromiseHolder', ...cangjieFfiParams.map((p) => p.ffiType)].join(
               ', '
             )
