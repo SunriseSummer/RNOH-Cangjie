@@ -39,6 +39,7 @@ import { TurboModuleRegistry } from 'react-native';
 
 export interface Spec extends TurboModule {
   getValue(id: number, label: string): Promise<string>;
+  sendBatch(items?: Array<string>): Promise<void>;
   flush(): void;
 }
 
@@ -80,5 +81,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieContent).toContain('public class SampleTurboModule');
     expect(cppContent).toContain('TurboModule::Context ctx');
     expect(cppContent).toContain('getValue');
+    expect(cppContent).toContain('label.c_str()');
+    expect(cppContent).toContain('itemsJsonDefaultValue = "[]"');
   });
 });

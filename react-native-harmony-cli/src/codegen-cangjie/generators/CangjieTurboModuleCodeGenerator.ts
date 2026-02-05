@@ -22,7 +22,8 @@ import {
 } from '../templates';
 
 // object/array 缺省时使用的 JSON 字符串占位符，避免序列化失败。
-const DEFAULT_EMPTY_JSON_STRING = '{}';
+const DEFAULT_EMPTY_JSON_OBJECT = '{}';
+const DEFAULT_EMPTY_JSON_ARRAY = '[]';
 
 type ParamKind = 'string' | 'boolean' | 'number' | 'object' | 'array' | 'unknown';
 
@@ -117,6 +118,7 @@ function buildCppArgDeclaration(
     case 'string':
       return {
         argName: paramName,
+        callArg: `${paramName}.c_str()`,
         lines: [
           `auto ${paramName} = args[${index}].asString(rt).utf8(rt);`,
         ],
@@ -124,11 +126,13 @@ function buildCppArgDeclaration(
     case 'boolean':
       return {
         argName: paramName,
+        callArg: paramName,
         lines: [`auto ${paramName} = args[${index}].getBool();`],
       };
     case 'number':
       return {
         argName: paramName,
+        callArg: paramName,
         lines: [
           `auto ${paramName} = static_cast<int32_t>(args[${index}].asNumber());`,
         ],
@@ -138,16 +142,19 @@ function buildCppArgDeclaration(
     case 'unknown':
     default: {
       const jsonName = `${paramName}Json`;
+      const defaultJson =
+        kind === 'array' ? DEFAULT_EMPTY_JSON_ARRAY : DEFAULT_EMPTY_JSON_OBJECT;
       return {
         argName: jsonName,
+        callArg: `${jsonName}.c_str()`,
         lines: [
-          `const std::string ${jsonName}DefaultValue = "${DEFAULT_EMPTY_JSON_STRING}";`,
+          `const std::string ${jsonName}DefaultValue = "${defaultJson}";`,
           `std::string ${jsonName} = ${jsonName}DefaultValue;`,
           `if (count > ${index} && args[${index}].isObject()) {`,
-          `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
-          `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
-          `  auto jsonString = stringify.call(rt, args[${index}]);`,
-          `  if (jsonString.isString()) {`,
+            `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
+            `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
+            `  auto jsonString = stringify.call(rt, args[${index}]);`,
+            `  if (jsonString.isString()) {`,
           `    ${jsonName} = jsonString.asString(rt).utf8(rt);`,
           `  }`,
           `}`,
@@ -299,7 +306,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
           index
         );
         cppArgDeclarations.push(...cppArg.lines.map((line) => ({ line })));
-        cppArgNames.push(cppArg.argName);
+        cppArgNames.push(cppArg.callArg);
       });
 
       const cppCallArgs = cppArgNames.join(', ');
