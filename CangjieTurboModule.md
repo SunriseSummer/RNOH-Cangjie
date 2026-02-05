@@ -1,10 +1,10 @@
 # Cangjie TurboModule（以 ImageLoader 为例）
 
-本文档说明 RNOH 中使用仓颉实现 TurboModule 的方案，并重点描述 C++ 如何调用仓颉实现的 ImageLoader。相关代码位于：
+本文档说明 RNOH 中使用 Cangjie（仓颉）实现 TurboModule 的方案，并重点描述 C++ 如何调用 Cangjie 实现的 ImageLoader。相关代码位于：
 
 - Cangjie 实现：`tester/harmony/react_native_openharmony/src/main/cangjie/RNOHCorePackage/turboModules/ImageLoader`
 - C++ TurboModule 桥接层：`tester/harmony/react_native_openharmony/src/main/cpp/RNOHCorePackage/TurboModules/ImageLoaderTurboModule.cpp`
-- C++/仓颉桥接公用层：`tester/harmony/react_native_openharmony/src/main/cpp/RNOHCangjieBridge`
+- C++/Cangjie 桥接公用层：`tester/harmony/react_native_openharmony/src/main/cpp/RNOHCangjieBridge`
 
 ## 总体链路
 
@@ -21,15 +21,15 @@ JS Promise resolve/reject
 ```
 
 核心思想：
-1. **仓颉在初始化时注册 C 回调**，把自身实现暴露给 C++。
-2. **C++ TurboModule 调用这些 C 回调**，并把 `PromiseHolder` 指针传入仓颉。
-3. **仓颉在完成后反向调用 C++ 的 `CJ_PromiseResolve/Reject`**，由 C++ 将 `CJ_Object` 转为 JS 值。
+1. **Cangjie 在初始化时注册 C 回调**，把自身实现暴露给 C++。
+2. **C++ TurboModule 调用这些 C 回调**，并把 `PromiseHolder` 指针传入 Cangjie。
+3. **Cangjie 在完成后反向调用 C++ 的 `CJ_PromiseResolve/Reject`**，由 C++ 将 `CJ_Object` 转为 JS 值。
 
-## C++ 如何拿到仓颉实现
+## C++ 如何拿到 Cangjie 实现
 
 ### 1) Cangjie 在 packageInit 中注册回调
 
-`packageinit.cj` 会在模块初始化时注册回调函数给 C++，使得 C++ 可通过函数指针直接调用仓颉逻辑：
+`packageinit.cj` 会在模块初始化时注册回调函数给 C++，使得 C++ 可通过函数指针直接调用 Cangjie 逻辑：
 
 ```cangjie
 // tester/harmony/react_native_openharmony/src/main/cangjie/RNOHCorePackage/turboModules/ImageLoader/packageinit.cj
@@ -51,7 +51,7 @@ public func packageInit(context: RNOHContext): Unit {
 
 ### 2) C++ 保存函数指针并暴露 ImageLoaderBridge
 
-在 `ImageLoaderBridge.cpp` 中，C++ 将仓颉注册的回调存入静态函数指针：
+在 `ImageLoaderBridge.cpp` 中，C++ 将 Cangjie 注册的回调存入静态函数指针：
 
 ```cpp
 // tester/harmony/react_native_openharmony/src/main/cpp/RNOHCangjieBridge/TurboModuleBridge/ImageLoaderBridge.cpp
@@ -74,7 +74,7 @@ namespace ImageLoaderBridge {
 }
 ```
 
-`ImageLoaderTurboModule.cpp` 在执行时调用 `ImageLoaderBridge::getSize`，就等价于调用了仓颉的 `CGetSize`。
+`ImageLoaderTurboModule.cpp` 在执行时调用 `ImageLoaderBridge::getSize`，就等价于调用了 Cangjie 的 `CGetSize`。
 
 ### 3) C++ TurboModule 直接调用 Cangjie 回调
 
@@ -90,14 +90,14 @@ return asyncPromise->get(rt);
 ```
 
 - `PromiseHolder<CJ_Object>` 持有 `AsyncPromise`，用于异步回调。
-- `promiseHolder` 作为 `void*` 传入仓颉，仓颉后续通过 `CJ_PromiseResolve/Reject` 回传结果。
-- 如果仓颉未注册回调（`isCjImageLoaderEnabled()` 为 false），则退回 ArkTS 方案。
+- `promiseHolder` 作为 `void*` 传入 Cangjie，Cangjie 后续通过 `CJ_PromiseResolve/Reject` 回传结果。
+- 如果 Cangjie 未注册回调（`isCjImageLoaderEnabled()` 为 false），则退回 ArkTS 方案。
 
-## C++ 与仓颉的类型转换
+## C++ 与 Cangjie 的类型转换
 
 ### 1) Promise 与返回值的桥接
 
-仓颉侧通过 `Bridge/PromiseHolder.cj` 封装 `CJ_PromiseResolve`，并将值包装成 `CJ_Object`：
+Cangjie 侧通过 `Bridge/PromiseHolder.cj` 封装 `CJ_PromiseResolve`，并将值包装成 `CJ_Object`：
 
 ```cangjie
 // tester/harmony/react_native_openharmony/src/main/cangjie/Bridge/PromiseHolder.cj
@@ -145,24 +145,26 @@ struct Bridging<CJ_Object> {
 };
 ```
 
-因此，**仓颉只需构造 CJ_Object**，就能由 C++ 桥接成 JS 能识别的 `jsi::Value`，最终触发 Promise resolve/reject。
+因此，**Cangjie 只需构造 CJ_Object**，就能由 C++ 桥接成 JS 能识别的 `jsi::Value`，最终触发 Promise resolve/reject。
 
 ### 2) 参数传递与 JSON 转换
 
-C++ 侧负责将复杂参数转成 JSON 字符串传入仓颉，例如 `getSizeWithHeaders` 与 `queryCache`：
+C++ 侧负责将复杂参数转成 JSON 字符串传入 Cangjie，例如 `getSizeWithHeaders` 与 `queryCache`：
 
 ```cpp
 // C++ 将 headers / uris 组装为 JSON 字符串
 std::string headersJson = "{}";
-auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");
-auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");
-headersJson = stringify.call(rt, args[1]).asString(rt).utf8(rt);
+if (count > 1 && args[1].isObject()) {
+  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");
+  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");
+  headersJson = stringify.call(rt, args[1]).asString(rt).utf8(rt);
+}
 
 std::string urisStr = "[\"https://example/a.png\",\"https://example/b.png\"]";
 ImageLoaderBridge::queryCache((void *)promiseHolder, urisStr.c_str());
 ```
 
-仓颉侧通过 `HashMap.fromJson(...)` 或 `JsonReader` 解析为本地类型：
+Cangjie 侧通过 `HashMap.fromJson(...)` 或 `JsonReader` 解析为本地类型：
 
 ```cangjie
 let headerMap = HashMap<String, String>.fromJson(JsonReader(ByteBuffer(unsafe { cjHeaders.rawData() })))
@@ -171,9 +173,9 @@ let result = module.getSizeWithHeaders(cjUri, headerMap)
 
 ## Cangjie → C++ 的回调与跨库调用
 
-### 1) 仓颉回调执行
+### 1) Cangjie 回调执行
 
-仓颉层的 `bridge.cj` 将 `CGetSize` 等函数声明为 `@C` 回调，C++ 调用时会进入这里：
+Cangjie 层的 `bridge.cj` 将 `CGetSize` 等函数声明为 `@C` 回调，C++ 调用时会进入这里：
 
 ```cangjie
 @C
@@ -191,7 +193,7 @@ func CGetSize(promise: PromiseHolder, uri: CString): Unit {
 
 ### 2) Cangjie 调用 C++ 更新 ImageSourceMap
 
-在下载完成后，仓颉调用 `CJ_UpdateImageSourceMap`（C++ 提供），C++ 会通过 `dlopen` 从 `librnoh_app.so` 解析 `onImageSourceMapUpdate` 并执行：
+在下载完成后，Cangjie 调用 `CJ_UpdateImageSourceMap`（C++ 提供），C++ 会通过 `dlopen` 从 `librnoh_app.so` 解析 `onImageSourceMapUpdate` 并执行：
 
 ```cangjie
 foreign func CJ_UpdateImageSourceMap(rnInstanceId: UInt64, remoteUri: CString, fileUri: CString): Unit
@@ -209,6 +211,7 @@ static func OnImageSourceMapUpdate(rnInstanceId: UInt64, remoteUri: String, file
 // C++ 通过 dlsym 获取 onImageSourceMapUpdate，并在 CJ_UpdateImageSourceMap 中调用
 static OnImageSourceMapUpdateFunc g_onImageSourceMapUpdateFunc = nullptr;
 
+// Cangjie 侧使用 mallocCString 分配内存，C++ 在此处释放（因此为 char*）。
 void CJ_UpdateImageSourceMap(unsigned long rnInstanceId, char* remoteUri, char* fileUri) {
   if (!loadOnImageSourceMapUpdateFunction()) { ... }
   g_onImageSourceMapUpdateFunc(rnInstanceId, remoteUri, fileUri);
@@ -219,9 +222,9 @@ void CJ_UpdateImageSourceMap(unsigned long rnInstanceId, char* remoteUri, char* 
 
 ## 小结
 
-- **C++ 调用仓颉**：通过 `register*Callback` 注册函数指针 + `ImageLoaderBridge` 转发。
-- **Promise/返回值桥接**：仓颉封装 `CJ_Object` 调用 `CJ_PromiseResolve`，C++ `Bridging<CJ_Object>` 转成 `jsi::Value`。
-- **类型转换**：复杂结构体通过 JSON 字符串在 C++ ↔ 仓颉间转换。
-- **跨库回调**：仓颉调用 C++ 的 `CJ_UpdateImageSourceMap`，C++ 再动态链接到 `librnoh_app.so` 的 `onImageSourceMapUpdate`。
+- **C++ 调用 Cangjie**：通过 `register*Callback` 注册函数指针 + `ImageLoaderBridge` 转发。
+- **Promise/返回值桥接**：Cangjie 封装 `CJ_Object` 调用 `CJ_PromiseResolve`，C++ `Bridging<CJ_Object>` 转成 `jsi::Value`。
+- **类型转换**：复杂结构体通过 JSON 字符串在 C++ ↔ Cangjie 间转换。
+- **跨库回调**：Cangjie 调用 C++ 的 `CJ_UpdateImageSourceMap`，C++ 再动态链接到 `librnoh_app.so` 的 `onImageSourceMapUpdate`。
 
 该方案避免了 ArkTS 的性能瓶颈，同时保留了 RN TurboModule 的 Promise API 语义。
