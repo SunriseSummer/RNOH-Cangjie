@@ -18,6 +18,9 @@
 
 当前实现位于：`react-native-harmony-cli/src/codegen-cangjie`，与现有 `codegen` 并行。
 
+TurboModule 调用链（仓颉实现）：
+`TS -> JSI -> HostObject -> TurboModule -> C++ TurboModule Wrapper -> FFI Wrapper -> Cangjie TurboModule`
+
 ## 输出结构
 
 以 `ImageLoader` 为例，输出目录与文件：
@@ -37,7 +40,7 @@
 
 ### 1. C++ TurboModule 包装层
 
-- 继承 `ArkTSTurboModule`，保持与现有 ArkTS 结构一致。
+- 继承 `rnoh::TurboModule`（RN TurboModule 基类），不依赖 ArkTS。
 - 自动生成 `methodMap_` 映射。
 - 对 Promise 返回方法：
   - 创建 `AsyncPromise<CJ_Object>`

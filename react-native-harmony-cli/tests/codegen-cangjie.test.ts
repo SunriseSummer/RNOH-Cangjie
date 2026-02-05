@@ -74,7 +74,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       'package reactnative_ohcj.TestPackage.turboModules.Sample'
     );
     expect(cangjieContent).toContain('public class SampleTurboModule');
-    expect(cppContent).toContain('isCjSampleEnabled');
+    expect(cppContent).toContain('TurboModule::Context ctx');
     expect(cppContent).toContain('getValue');
   });
 });

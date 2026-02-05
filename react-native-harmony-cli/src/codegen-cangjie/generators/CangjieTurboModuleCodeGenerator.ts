@@ -205,7 +205,6 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       className,
       `${moduleName}Bridge.h`,
       bridgeNamespace,
-      isEnabledName,
       this.codegenNoticeLines
     );
     const cppBridgeHeaderTemplate = new CppBridgeHTemplate(
@@ -286,7 +285,6 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       cppCppTemplate.addMethod({
         name: methodName,
         argsCount: prop.typeAnnotation.params.length,
-        arktsCall: returnsPromise ? 'callAsync' : 'call',
         isAsync: returnsPromise,
         cppArgDeclarations,
         cppCallArgs,

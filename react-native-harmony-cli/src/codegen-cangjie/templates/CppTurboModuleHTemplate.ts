@@ -16,13 +16,13 @@ const TEMPLATE = `
 
 #pragma once
 
-#include "RNOH/ArkTSTurboModule.h"
+#include "RNOH/TurboModule.h"
 
 namespace rnoh {
 
-class JSI_EXPORT {{className}} : public ArkTSTurboModule {
+class JSI_EXPORT {{className}} : public TurboModule {
  public:
-  {{className}}(const ArkTSTurboModule::Context ctx, const std::string name);
+  {{className}}(const TurboModule::Context ctx, const std::string name);
 
   {{#methods}}
   static facebook::jsi::Value {{name}}(

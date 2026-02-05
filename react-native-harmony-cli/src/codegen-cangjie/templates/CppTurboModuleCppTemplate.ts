@@ -24,8 +24,8 @@ const TEMPLATE = `
 using namespace rnoh;
 using namespace facebook;
 
-{{className}}::{{className}}(const ArkTSTurboModule::Context ctx, const std::string name)
-    : ArkTSTurboModule(ctx, name) {
+{{className}}::{{className}}(const TurboModule::Context ctx, const std::string name)
+    : TurboModule(ctx, name) {
   methodMap_ = {
     {{#methods}}
     { "{{name}}", { {{argsCount}}, {{className}}::{{name}} } },
@@ -39,13 +39,6 @@ facebook::jsi::Value {{className}}::{{name}}(
     facebook::react::TurboModule& turboModule,
     const facebook::jsi::Value* args,
     size_t count) {
-  if (!{{bridgeNamespace}}::{{isEnabledName}}()) {
-    return static_cast<ArkTSTurboModule&>(turboModule).{{arktsCall}}(
-        rt,
-        "{{name}}",
-        args,
-        count);
-  }
   {{#cppArgDeclarations}}
   {{{line}}}
   {{/cppArgDeclarations}}
@@ -70,7 +63,6 @@ facebook::jsi::Value {{className}}::{{name}}(
 type Method = {
   name: string;
   argsCount: number;
-  arktsCall: string;
   isAsync: boolean;
   cppArgDeclarations: { line: string }[];
   cppCallArgs: string;
@@ -84,7 +76,6 @@ export class CppTurboModuleCppTemplate {
     private className: string,
     private bridgeHeader: string,
     private bridgeNamespace: string,
-    private isEnabledName: string,
     private codegenNoticeLines: string[]
   ) {}
 
@@ -97,7 +88,6 @@ export class CppTurboModuleCppTemplate {
       className: this.className,
       bridgeHeader: this.bridgeHeader,
       bridgeNamespace: this.bridgeNamespace,
-      isEnabledName: this.isEnabledName,
       codegenNoticeLines: this.codegenNoticeLines.map((line) => ({ line })),
       methods: this.methods,
     });
