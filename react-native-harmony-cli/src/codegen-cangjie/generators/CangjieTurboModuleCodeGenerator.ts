@@ -22,7 +22,7 @@ import {
 } from '../templates';
 
 // Default placeholder for object/array arguments when a value is missing.
-const DEFAULT_EMPTY_JSON_OBJECT = '"{}"';
+const DEFAULT_EMPTY_JSON_STRING = '"{}"';
 
 type ParamKind = 'string' | 'boolean' | 'number' | 'object' | 'array' | 'unknown';
 
@@ -126,8 +126,8 @@ function buildCppArgDeclaration(
       return {
         argName: jsonName,
         lines: [
-          `const std::string ${jsonName}Default = ${DEFAULT_EMPTY_JSON_OBJECT};`,
-          `std::string ${jsonName} = ${jsonName}Default;`,
+          `const std::string ${jsonName}DefaultValue = ${DEFAULT_EMPTY_JSON_STRING};`,
+          `std::string ${jsonName} = ${jsonName}DefaultValue;`,
           `if (count > ${index} && args[${index}].isObject()) {`,
           `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
           `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
