@@ -22,7 +22,7 @@ import {
 } from '../templates';
 
 // Default placeholder for object/array arguments when a value is missing.
-const DEFAULT_EMPTY_JSON_STRING = '"{}"';
+const DEFAULT_EMPTY_JSON_STRING = '{}';
 
 type ParamKind = 'string' | 'boolean' | 'number' | 'object' | 'array' | 'unknown';
 
@@ -126,7 +126,7 @@ function buildCppArgDeclaration(
       return {
         argName: jsonName,
         lines: [
-          `const std::string ${jsonName}DefaultValue = ${DEFAULT_EMPTY_JSON_STRING};`,
+          `const std::string ${jsonName}DefaultValue = "${DEFAULT_EMPTY_JSON_STRING}";`,
           `std::string ${jsonName} = ${jsonName}DefaultValue;`,
           `if (count > ${index} && args[${index}].isObject()) {`,
           `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
@@ -333,17 +333,18 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         callbackTypeName,
         callbackName,
       });
+      const callbackArgNames = prop.typeAnnotation.params.map((param) => param.name);
+      const cppBridgeCallArgs = returnsPromise
+        ? ['promiseHolder', ...callbackArgNames].join(', ')
+        : callbackArgNames.join(', ');
+
       cppBridgeCppTemplate.addMethod({
         returnType: 'void',
         name: methodName,
         params: returnsPromise
           ? cppBridgeParamsWithPromise
           : cppBridgeParams,
-        callArgs: returnsPromise
-          ? ['promiseHolder', ...prop.typeAnnotation.params.map((p) => p.name)].join(
-              ', '
-            )
-          : prop.typeAnnotation.params.map((p) => p.name).join(', '),
+        callArgs: cppBridgeCallArgs,
         callbackName,
         isAsync: returnsPromise,
         hasReturn: false,
