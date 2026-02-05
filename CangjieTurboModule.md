@@ -160,7 +160,7 @@ if (count > 1 && args[1].isObject()) {
   headersJson = stringify.call(rt, args[1]).asString(rt).utf8(rt);
 }
 
-std::string urisStr = "[\"<uri1>\",\"<uri2>\"]";
+std::string urisStr = "[\"https://example.com/image1.png\",\"https://example.com/image2.png\"]"; // 示例
 ImageLoaderBridge::queryCache((void *)promiseHolder, urisStr.c_str());
 ```
 
@@ -214,7 +214,11 @@ static OnImageSourceMapUpdateFunc g_onImageSourceMapUpdateFunc = nullptr;
 // Cangjie 侧使用 mallocCString 分配内存，C++ 在此处释放以避免泄漏（因此为 char*）。
 // 调用后 Cangjie 不应缓存或再访问这些指针。
 void CJ_UpdateImageSourceMap(unsigned long rnInstanceId, char* remoteUri, char* fileUri) {
-  if (!loadOnImageSourceMapUpdateFunction()) { ... }
+  if (!loadOnImageSourceMapUpdateFunction()) {
+    free(remoteUri);
+    free(fileUri);
+    return;
+  }
   g_onImageSourceMapUpdateFunc(rnInstanceId, remoteUri, fileUri);
   free(remoteUri);
   free(fileUri);
