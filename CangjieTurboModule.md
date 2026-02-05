@@ -153,11 +153,12 @@ C++ 侧负责将复杂参数转成 JSON 字符串传入仓颉，例如 `getSizeW
 
 ```cpp
 // C++ 将 headers / uris 组装为 JSON 字符串
+std::string headersJson = "{}";
 auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");
 auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");
 headersJson = stringify.call(rt, args[1]).asString(rt).utf8(rt);
 
-std::string urisStr = "[...json array...]";
+std::string urisStr = "[\"https://example/a.png\",\"https://example/b.png\"]";
 ImageLoaderBridge::queryCache((void *)promiseHolder, urisStr.c_str());
 ```
 
