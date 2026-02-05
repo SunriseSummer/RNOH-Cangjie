@@ -47,7 +47,9 @@ namespace {{bridgeNamespace}} {
       {{/hasReturn}}
     {{#isAsync}}
     } else if (promiseHolder) {
-      CJ_PromiseReject(promiseHolder, "{{name}} callback not registered");
+      CJ_PromiseReject(
+          promiseHolder,
+          "{{bridgeNamespace}}::{{name}} callback not registered");
     }
     {{/isAsync}}
     {{^isAsync}}

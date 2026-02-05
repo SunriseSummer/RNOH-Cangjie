@@ -35,7 +35,7 @@ func {{cFunctionName}}({{{stringifiedParams}}}): Unit {
         {{{asyncCallLine}}}
         {{{asyncResolveLine}}}
       } catch (e: Exception) {
-        PromiseReject(promise, e.toString())
+        PromiseReject(promise, "{{name}} failed: " + e.toString())
       }
     }
     {{/isAsync}}
