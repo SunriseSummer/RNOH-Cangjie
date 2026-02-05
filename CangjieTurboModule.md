@@ -153,14 +153,14 @@ C++ 侧负责将复杂参数转成 JSON 字符串传入 Cangjie，例如 `getSiz
 
 ```cpp
 // C++ 将 headers / uris 组装为 JSON 字符串
-std::string headersJson = "{}";
+std::string headersJson = "{}"; // 默认空对象（未传 headers 时使用）
 if (count > 1 && args[1].isObject()) {
   auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");
   auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");
   headersJson = stringify.call(rt, args[1]).asString(rt).utf8(rt);
 }
 
-std::string urisStr = "[\"https://example/a.png\",\"https://example/b.png\"]";
+std::string urisStr = "[\"<uri1>\",\"<uri2>\"]";
 ImageLoaderBridge::queryCache((void *)promiseHolder, urisStr.c_str());
 ```
 
