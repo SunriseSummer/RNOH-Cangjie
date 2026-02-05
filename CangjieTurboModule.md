@@ -133,13 +133,33 @@ template <>
 struct Bridging<CJ_Object> {
   static jsi::Value toJs(jsi::Runtime &runtime, const CJ_Object &obj) {
     switch (obj.valueKind) {
-      case CJ_StringKind:
-        return jsi::String::createFromUtf8(runtime, std::string((char *)(obj.data)));
+      case CJ_UndefinedKind:
+        return jsi::Value::undefined();
+      case CJ_NullKind:
+        return jsi::Value::null();
+      case CJ_BooleanKind: {
+        auto value = jsi::Value(*(bool *)(obj.data));
+        free(obj.data);
+        return value;
+      }
+      case CJ_NumberKind: {
+        auto value = jsi::Value(*(double *)(obj.data));
+        free(obj.data);
+        return value;
+      }
+      case CJ_StringKind: {
+        auto value = jsi::String::createFromUtf8(runtime, std::string((char *)(obj.data)));
+        free(obj.data);
+        return value;
+      }
       case CJ_ObjectKind: {
         auto data = (uint8_t*)obj.data;
-        return jsi::Value::createFromJsonUtf8(runtime, data, strlen((char*)data));
+        auto value = jsi::Value::createFromJsonUtf8(runtime, data, strlen((char*)data));
+        free(obj.data);
+        return value;
       }
-      // 其他类型略
+      default:
+        return jsi::Value::undefined();
     }
   }
 };
@@ -160,7 +180,12 @@ if (count > 1 && args[1].isObject()) {
   headersJson = stringify.call(rt, args[1]).asString(rt).utf8(rt);
 }
 
-std::string urisStr = "[\"https://example.com/image1.png\",\"https://example.com/image2.png\"]"; // 示例
+std::string urisStr = "[";
+for (size_t i = 0; i < uris.size(); i++) {
+  if (i > 0) urisStr += ",";
+  urisStr += '\"' + uris[i] + '\"';
+}
+urisStr += "]";
 ImageLoaderBridge::queryCache((void *)promiseHolder, urisStr.c_str());
 ```
 
