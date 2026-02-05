@@ -79,6 +79,15 @@ public func PromiseResolve(promise: PromiseHolder, value: Int32): Unit {
     }
 }
 
+// Resolve the promise with double value
+public func PromiseResolve(promise: PromiseHolder, value: Float64): Unit {
+    unsafe {
+        let cFloatValue = LibC.malloc<Float64>(count: 1)
+        cFloatValue.write(value)
+        CJ_PromiseResolve(promise, CJ_Object(CPointer<Unit>(cFloatValue), CJ_NumberKind))
+    }
+}
+
 // Resolve the promise with Json Object value(All keys has value)
 public func PromiseResolve(promise: PromiseHolder, data: HashMap<String, String>): Unit {
     let dataJsonHashMap = HashMap<String, JsonValue>()
@@ -114,6 +123,14 @@ public func PromiseResolve(promise: PromiseHolder, data: JsonValue): Unit {
     let jsonData = data.toString()
     unsafe {
         let cJsonDataString = LibC.mallocCString(jsonData).getChars()
+        CJ_PromiseResolve(promise, CJ_Object(CPointer<Unit>(cJsonDataString), CJ_ObjectKind))
+    }
+}
+
+// Resolve the promise with JSON string value (object/array passthrough)
+public func PromiseResolveJson(promise: PromiseHolder, json: String): Unit {
+    unsafe {
+        let cJsonDataString = LibC.mallocCString(json).getChars()
         CJ_PromiseResolve(promise, CJ_Object(CPointer<Unit>(cJsonDataString), CJ_ObjectKind))
     }
 }

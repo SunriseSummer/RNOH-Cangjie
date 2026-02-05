@@ -21,11 +21,13 @@ const TEMPLATE = `
 
 package {{packageName}}
 
+import reactnative_ohcj.Bridge.CJ_Object
+
 type PromiseHolder = CPointer<Unit>
 
 foreign {
   {{#methods}}
-  func {{registerName}}(callback: CFunc<({{{callbackSignature}}}) -> Unit>): Unit
+  func {{registerName}}(callback: CFunc<({{{callbackSignature}}}) -> {{callbackReturnType}}>): Unit
   {{/methods}}
 }
 `;
@@ -33,6 +35,7 @@ foreign {
 type Method = {
   registerName: string;
   callbackSignature: string;
+  callbackReturnType: string;
 };
 
 export class CangjieForeignTemplate {

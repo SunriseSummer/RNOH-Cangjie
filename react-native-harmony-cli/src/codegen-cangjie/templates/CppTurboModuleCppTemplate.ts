@@ -57,8 +57,14 @@ facebook::jsi::Value {{className}}::{{name}}(
   return asyncPromise->get(rt);
   {{/isAsync}}
   {{^isAsync}}
+  {{#hasReturn}}
+  auto result = {{bridgeNamespace}}::{{name}}({{{cppCallArgs}}});
+  return react::Bridging<CJ_Object>::toJs(rt, result);
+  {{/hasReturn}}
+  {{^hasReturn}}
   {{bridgeNamespace}}::{{name}}({{{cppCallArgs}}});
   return jsi::Value::undefined();
+  {{/hasReturn}}
   {{/isAsync}}
 }
 
@@ -69,6 +75,7 @@ type Method = {
   name: string;
   argsCount: number;
   isAsync: boolean;
+  hasReturn: boolean;
   cppArgDeclarations: { line: string }[];
   cppCallArgs: string;
   cppCallArgsWithPromise: string;
