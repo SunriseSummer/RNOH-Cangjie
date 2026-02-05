@@ -211,7 +211,8 @@ static func OnImageSourceMapUpdate(rnInstanceId: UInt64, remoteUri: String, file
 // C++ 通过 dlsym 获取 onImageSourceMapUpdate，并在 CJ_UpdateImageSourceMap 中调用
 static OnImageSourceMapUpdateFunc g_onImageSourceMapUpdateFunc = nullptr;
 
-// Cangjie 侧使用 mallocCString 分配内存，C++ 在此处释放（因此为 char*）。
+// Cangjie 侧使用 mallocCString 分配内存，C++ 在此处释放以避免泄漏（因此为 char*）。
+// 调用后 Cangjie 不应再访问这些指针。
 void CJ_UpdateImageSourceMap(unsigned long rnInstanceId, char* remoteUri, char* fileUri) {
   if (!loadOnImageSourceMapUpdateFunction()) { ... }
   g_onImageSourceMapUpdateFunc(rnInstanceId, remoteUri, fileUri);
