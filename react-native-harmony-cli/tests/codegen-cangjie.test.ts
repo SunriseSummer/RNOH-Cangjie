@@ -41,7 +41,9 @@ import { TurboModuleRegistry } from 'react-native';
 export interface Spec extends TurboModule {
   getValue(id: number, label: string): Promise<string>;
   sendBatch(items?: Array<string>): Promise<void>;
-  flush(): void;
+  fetchCache(): Promise<Array<string>>;
+  getTotal(multiplier?: number, tag?: string | null): number;
+  getCacheKeys(): Array<string>;
 }
 
 export default TurboModuleRegistry.get<Spec>('Sample')!;
@@ -75,8 +77,17 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     const cangjieFilePath = outputRoot
       .copyWithNewSegment('cangjie', 'Sample', 'SampleTurboModule.cj')
       .getValue();
+    const cangjieBridgePath = outputRoot
+      .copyWithNewSegment('cangjie', 'Sample', 'bridge.cj')
+      .getValue();
+    const cangjieForeignPath = outputRoot
+      .copyWithNewSegment('cangjie', 'Sample', 'foreign.cj')
+      .getValue();
     const cppFilePath = outputRoot
       .copyWithNewSegment('cpp', 'SampleTurboModule.cpp')
+      .getValue();
+    const cppBridgeHeaderPath = outputRoot
+      .copyWithNewSegment('cpp-bridge', 'SampleBridge.h')
       .getValue();
 
     const cangjieContent = [...files.entries()].find(
@@ -85,14 +96,34 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     const cppContent = [...files.entries()].find(
       ([filePath]) => filePath.getValue() === cppFilePath
     )?.[1];
+    const cangjieBridgeContent = [...files.entries()].find(
+      ([filePath]) => filePath.getValue() === cangjieBridgePath
+    )?.[1];
+    const cangjieForeignContent = [...files.entries()].find(
+      ([filePath]) => filePath.getValue() === cangjieForeignPath
+    )?.[1];
+    const cppBridgeHeaderContent = [...files.entries()].find(
+      ([filePath]) => filePath.getValue() === cppBridgeHeaderPath
+    )?.[1];
 
     expect(cangjieContent).toContain(
       'package reactnative_ohcj.TestPackage.turboModules.Sample'
     );
     expect(cangjieContent).toContain('public class SampleTurboModule');
+    expect(cangjieContent).toContain('fetchCache');
+    expect(cangjieContent).toContain('getTotal(multiplier: ?Float64, tag: ?String)');
+    expect(cangjieContent).toContain('getCacheKeys');
     expect(cppContent).toContain('TurboModule::Context ctx');
     expect(cppContent).toContain('getValue');
+    expect(cppContent).toContain('fetchCache');
     expect(cppContent).toContain('label.c_str()');
     expect(cppContent).toContain('itemsJsonDefaultValue = "[]"');
+    expect(cppContent).toContain('double multiplier = 0.0');
+    expect(cppContent).toContain('if (count > 1 && args[1].isString())');
+    expect(cppContent).toContain('react::Bridging<CJ_Object>::toJs');
+    expect(cangjieBridgeContent).toContain('PromiseResolveJson');
+    expect(cangjieBridgeContent).toContain('CJ_ObjectKind');
+    expect(cangjieForeignContent).toContain('-> CJ_Object');
+    expect(cppBridgeHeaderContent).toContain('CJ_Object');
   });
 });

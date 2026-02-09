@@ -25,7 +25,23 @@ import {
 const DEFAULT_EMPTY_JSON_OBJECT = '{}';
 const DEFAULT_EMPTY_JSON_ARRAY = '[]';
 
-type ParamKind = 'string' | 'boolean' | 'number' | 'object' | 'array' | 'unknown';
+type ParamKind =
+  | 'string'
+  | 'boolean'
+  | 'int32'
+  | 'number'
+  | 'object'
+  | 'array'
+  | 'unknown';
+
+type ReturnKind =
+  | 'void'
+  | 'string'
+  | 'boolean'
+  | 'int32'
+  | 'number'
+  | 'json'
+  | 'unknown';
 
 /**
  * 处理可空类型，便于后续按实际类型分支。
@@ -50,6 +66,7 @@ function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
       return 'string';
     case 'Int32TypeAnnotation':
     case 'Int32EnumTypeAnnotation':
+      return 'int32';
     case 'DoubleTypeAnnotation':
     case 'FloatTypeAnnotation':
     case 'NumberTypeAnnotation':
@@ -61,7 +78,7 @@ function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
       return 'object';
     case 'ReservedTypeAnnotation':
       if (resolved.name === 'RootTag') {
-        return 'number';
+        return 'int32';
       }
       return 'unknown';
     default:
@@ -80,8 +97,10 @@ function getCppBridgeType(typeAnnotation: TypeAnnotation): string {
       return 'const char*';
     case 'boolean':
       return 'bool';
-    case 'number':
+    case 'int32':
       return 'int32_t';
+    case 'number':
+      return 'double';
     default:
       return 'const char*';
   }
@@ -98,8 +117,10 @@ function getCangjieFfiType(typeAnnotation: TypeAnnotation): string {
       return 'CString';
     case 'boolean':
       return 'Bool';
-    case 'number':
+    case 'int32':
       return 'Int32';
+    case 'number':
+      return 'Float64';
     default:
       return 'CString';
   }
@@ -111,11 +132,25 @@ function getCangjieFfiType(typeAnnotation: TypeAnnotation): string {
 function buildCppArgDeclaration(
   paramName: string,
   typeAnnotation: TypeAnnotation,
-  index: number
+  index: number,
+  isOptional: boolean
 ) {
   const kind = getParamKind(typeAnnotation);
+  // 可选/可空参数使用默认值并做 isX 检查，避免直接读取导致崩溃。
+  const needsGuard = isOptional || typeAnnotation.type === 'NullableTypeAnnotation';
   switch (kind) {
     case 'string':
+      if (needsGuard) {
+        return {
+          callArg: `${paramName}.c_str()`,
+          lines: [
+            `std::string ${paramName} = "";`,
+            `if (count > ${index} && args[${index}].isString()) {`,
+            `  ${paramName} = args[${index}].asString(rt).utf8(rt);`,
+            `}`,
+          ],
+        };
+      }
       return {
         callArg: `${paramName}.c_str()`,
         lines: [
@@ -123,16 +158,54 @@ function buildCppArgDeclaration(
         ],
       };
     case 'boolean':
+      if (needsGuard) {
+        return {
+          callArg: paramName,
+          lines: [
+            `bool ${paramName} = false;`,
+            `if (count > ${index} && args[${index}].isBool()) {`,
+            `  ${paramName} = args[${index}].getBool();`,
+            `}`,
+          ],
+        };
+      }
       return {
         callArg: paramName,
         lines: [`auto ${paramName} = args[${index}].getBool();`],
       };
-    case 'number':
+    case 'int32':
+      if (needsGuard) {
+        return {
+          callArg: paramName,
+          lines: [
+            `int32_t ${paramName} = 0;`,
+            `if (count > ${index} && args[${index}].isNumber()) {`,
+            `  ${paramName} = static_cast<int32_t>(args[${index}].asNumber());`,
+            `}`,
+          ],
+        };
+      }
       return {
         callArg: paramName,
         lines: [
           `auto ${paramName} = static_cast<int32_t>(args[${index}].asNumber());`,
         ],
+      };
+    case 'number':
+      if (needsGuard) {
+        return {
+          callArg: paramName,
+          lines: [
+            `double ${paramName} = 0.0;`,
+            `if (count > ${index} && args[${index}].isNumber()) {`,
+            `  ${paramName} = args[${index}].asNumber();`,
+            `}`,
+          ],
+        };
+      }
+      return {
+        callArg: paramName,
+        lines: [`auto ${paramName} = args[${index}].asNumber();`],
       };
     case 'object':
     case 'array':
@@ -175,6 +248,126 @@ function buildCangjieArgConversion(paramName: string, ffiType: string) {
 }
 
 /**
+ * 解析返回类型，决定同步返回/Promise Resolve 的包装策略。
+ * 复杂对象与数组使用 JSON 字符串回传，保持 JS 侧结构一致。
+ */
+function getReturnKind(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>,
+  enumKindMap: Map<string, ReturnKind>
+): ReturnKind {
+  const resolved = unwrapNullable(typeAnnotation);
+  switch (resolved.type) {
+    case 'VoidTypeAnnotation':
+      return 'void';
+    case 'BooleanTypeAnnotation':
+      return 'boolean';
+    case 'StringTypeAnnotation':
+    case 'StringEnumTypeAnnotation':
+      return 'string';
+    case 'Int32TypeAnnotation':
+    case 'Int32EnumTypeAnnotation':
+      return 'int32';
+    case 'DoubleTypeAnnotation':
+    case 'FloatTypeAnnotation':
+    case 'NumberTypeAnnotation':
+      return 'number';
+    case 'ArrayTypeAnnotation':
+    case 'ObjectTypeAnnotation':
+    case 'GenericObjectTypeAnnotation':
+    case 'UnionTypeAnnotation':
+    case 'MixedTypeAnnotation':
+    case 'ReservedPropTypeAnnotation':
+      return 'json';
+    case 'ReservedTypeAnnotation':
+      return resolved.name === 'RootTag' ? 'int32' : 'unknown';
+    case 'TypeAliasTypeAnnotation': {
+      const alias = aliasMap[resolved.name];
+      return alias ? getReturnKind(alias, aliasMap, enumKindMap) : 'unknown';
+    }
+    case 'EnumDeclaration':
+      return enumKindMap.get(resolved.name) ?? 'unknown';
+    case 'PromiseTypeAnnotation':
+      return resolved.elementType
+        ? getReturnKind(resolved.elementType, aliasMap, enumKindMap)
+        : 'unknown';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * 根据返回类型生成 Promise Resolve 语句。
+ */
+function buildAsyncResolveLine(returnKind: ReturnKind): string {
+  if (returnKind === 'void') {
+    return 'PromiseResolve(promise)';
+  }
+  if (returnKind === 'json') {
+    return 'PromiseResolveJson(promise, result.toString())';
+  }
+  return 'PromiseResolve(promise, result)';
+}
+
+/**
+ * 构建同步返回 CJ_Object 的 Cangjie 代码片段。
+ * 通过 CJ_ObjectKind 让 C++ 将 JSON 字符串还原为 JS 对象。
+ */
+function buildSyncReturnLines(returnKind: ReturnKind) {
+  switch (returnKind) {
+    case 'boolean':
+      return {
+        needsLibC: true,
+        lines: [
+          'let cBoolValue = unsafe { LibC.malloc<Bool>(count: 1) }',
+          'cBoolValue.write(result)',
+          'return CJ_Object(CPointer<Unit>(cBoolValue), CJ_BooleanKind)',
+        ],
+      };
+    case 'int32':
+      return {
+        needsLibC: true,
+        lines: [
+          'let cIntValue = unsafe { LibC.malloc<Int32>(count: 1) }',
+          'cIntValue.write(result)',
+          'return CJ_Object(CPointer<Unit>(cIntValue), CJ_NumberKind)',
+        ],
+      };
+    case 'number':
+      return {
+        needsLibC: true,
+        lines: [
+          'let cNumberValue = unsafe { LibC.malloc<Float64>(count: 1) }',
+          'cNumberValue.write(result)',
+          'return CJ_Object(CPointer<Unit>(cNumberValue), CJ_NumberKind)',
+        ],
+      };
+    case 'string':
+      return {
+        needsLibC: true,
+        lines: [
+          'let cStringValue = unsafe { LibC.mallocCString(result).getChars() }',
+          'return CJ_Object(CPointer<Unit>(cStringValue), CJ_StringKind)',
+        ],
+      };
+    case 'json':
+      return {
+        needsLibC: true,
+        lines: [
+          'let jsonString = result.toString()',
+          'let cJsonValue = unsafe { LibC.mallocCString(jsonString).getChars() }',
+          'return CJ_Object(CPointer<Unit>(cJsonValue), CJ_ObjectKind)',
+        ],
+      };
+    default:
+      return {
+        needsLibC: false,
+        lines: ['return CJ_Object(CPointer<Unit>(), CJ_UndefinedKind)'],
+      };
+  }
+}
+
+/**
  * Cangjie TurboModule CodeGen 主生成器。
  * 输出 C++ 包装层、C++/Cangjie 桥接层与 Cangjie 模板代码。
  */
@@ -206,6 +399,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
     const isEnabledName = `isCj${moduleName}Enabled`;
     const packageName = `${this.cangjiePackagePrefix}.${moduleName}`;
     const moduleDirPath = this.cangjieOutputPath.copyWithNewSegment(moduleName);
+    const enumKindMap = new Map<string, ReturnKind>();
 
     const cangjieTemplate = new CangjieTurboModuleTemplate(
       className,
@@ -263,6 +457,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
           ? 'Int32'
           : 'String';
       cangjieTemplate.addEnum({ name, type: enumType });
+      enumKindMap.set(name, enumType === 'Int32' ? 'int32' : 'string');
     });
 
     schema.spec.properties.forEach((prop) => {
@@ -274,16 +469,24 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const returnsPromise =
         prop.typeAnnotation.returnTypeAnnotation.type ===
         'PromiseTypeAnnotation';
+      const returnTypeAnnotation = prop.typeAnnotation.returnTypeAnnotation;
+      // 计算 JS 侧返回类型分支，用于同步/Promise 结果包装。
+      const returnKind = getReturnKind(
+        returnTypeAnnotation,
+        schema.aliasMap,
+        enumKindMap
+      );
       const returnType = typeAnnotationToCangjie.convertReturnType(
-        prop.typeAnnotation.returnTypeAnnotation
+        returnTypeAnnotation
       );
       const stringifiedArgs = prop.typeAnnotation.params
-        .map(
-          (param) =>
-            `${param.name}: ${typeAnnotationToCangjie.convert(
-              param.typeAnnotation
-            )}`
-        )
+        .map((param) => {
+          const rawType = typeAnnotationToCangjie.convert(param.typeAnnotation);
+          // 可选参数在 Cangjie 侧用 ?Type 表示，提醒业务处理 None。
+          const cangjieType =
+            param.optional && !rawType.startsWith('?') ? `?${rawType}` : rawType;
+          return `${param.name}: ${cangjieType}`;
+        })
         .join(', ');
 
       cangjieTemplate.addMethod({
@@ -299,7 +502,8 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         const cppArg = buildCppArgDeclaration(
           param.name,
           param.typeAnnotation,
-          index
+          index,
+          param.optional
         );
         cppArgDeclarations.push(...cppArg.lines.map((line) => ({ line })));
         cppArgNames.push(cppArg.callArg);
@@ -310,10 +514,12 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         ? `promiseHolder, ${cppCallArgs}`
         : 'promiseHolder';
 
+      const hasSyncReturn = !returnsPromise && returnKind !== 'void';
       cppCppTemplate.addMethod({
         name: methodName,
         argsCount: prop.typeAnnotation.params.length,
         isAsync: returnsPromise,
+        hasReturn: hasSyncReturn,
         cppArgDeclarations,
         cppCallArgs,
         cppCallArgsWithPromise,
@@ -321,6 +527,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
 
       const callbackTypeName = `${pascalName}Callback`;
       const callbackName = `${Case.camel(methodName)}Callback`;
+      const registerFlagName = `${callbackName}Registered`;
       const cppBridgeParams = prop.typeAnnotation.params
         .map(
           (param) =>
@@ -332,7 +539,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         : 'void* promiseHolder';
 
       cppBridgeHeaderTemplate.addCallback({
-        callbackReturnType: 'void',
+        callbackReturnType: hasSyncReturn ? 'CJ_Object' : 'void',
         callbackName: callbackTypeName,
         callbackParams: returnsPromise
           ? cppBridgeParamsWithPromise
@@ -343,7 +550,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         callbackTypeName,
       });
       cppBridgeHeaderTemplate.addMethod({
-        returnType: 'void',
+        returnType: hasSyncReturn ? 'CJ_Object' : 'void',
         name: methodName,
         params: returnsPromise
           ? cppBridgeParamsWithPromise
@@ -353,11 +560,13 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       cppBridgeCppTemplate.addCallback({
         callbackTypeName,
         callbackName,
+        registerFlagName,
       });
       cppBridgeCppTemplate.addRegister({
         registerName: `register${pascalName}Callback`,
         callbackTypeName,
         callbackName,
+        registerFlagName,
       });
       const callbackArgNames = prop.typeAnnotation.params.map((param) => param.name);
       const cppBridgeCallArgs = returnsPromise
@@ -365,7 +574,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         : callbackArgNames.join(', ');
 
       cppBridgeCppTemplate.addMethod({
-        returnType: 'void',
+        returnType: hasSyncReturn ? 'CJ_Object' : 'void',
         name: methodName,
         params: returnsPromise
           ? cppBridgeParamsWithPromise
@@ -373,7 +582,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         callArgs: cppBridgeCallArgs,
         callbackName,
         isAsync: returnsPromise,
-        hasReturn: false,
+        hasReturn: hasSyncReturn,
       });
 
       const cangjieFfiParams = prop.typeAnnotation.params.map((param) => ({
@@ -396,18 +605,20 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       });
 
       const callArgsString = callArgs.join(', ');
-      const asyncCallLine =
-        returnType === 'Unit'
-          ? `module.${methodName}(${callArgsString})`
-          : `let result = module.${methodName}(${callArgsString})`;
-      const asyncResolveLine =
-        returnType === 'Unit'
-          ? 'PromiseResolve(promise)'
-          : 'PromiseResolve(promise, result)';
-      const syncCallLine =
-        returnType === 'Unit'
-          ? `module.${methodName}(${callArgsString})`
-          : `let _ = module.${methodName}(${callArgsString})`;
+      const isVoidReturn = returnKind === 'void';
+      const asyncCallLine = isVoidReturn
+        ? `module.${methodName}(${callArgsString})`
+        : `let result = module.${methodName}(${callArgsString})`;
+      const asyncResolveLine = buildAsyncResolveLine(returnKind);
+      const syncCallLine = isVoidReturn
+        ? `module.${methodName}(${callArgsString})`
+        : '';
+      const syncReturnInfo = hasSyncReturn
+        ? buildSyncReturnLines(returnKind)
+        : null;
+      if (syncReturnInfo?.needsLibC) {
+        bridgeTemplate.addImport('std.io.*');
+      }
 
       bridgeTemplate.addMethod({
         name: methodName,
@@ -418,9 +629,12 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         callArgs: callArgsString,
         argConversions,
         isAsync: returnsPromise,
+        hasReturn: hasSyncReturn,
+        returnType: hasSyncReturn ? 'CJ_Object' : 'Unit',
         asyncCallLine,
         asyncResolveLine,
         syncCallLine,
+        syncReturnLines: (syncReturnInfo?.lines ?? []).map((line) => ({ line })),
       });
       foreignTemplate.addMethod({
         registerName: `register${pascalName}Callback`,
@@ -429,6 +643,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
               ', '
             )
           : cangjieFfiParams.map((p) => p.ffiType).join(', '),
+        callbackReturnType: hasSyncReturn ? 'CJ_Object' : 'Unit',
       });
       packageInitTemplate.addMethod({
         registerName: `register${pascalName}Callback`,

@@ -21,24 +21,29 @@ const TEMPLATE = `
 
 #include "{{headerName}}"
 
-static bool g_isRegistered = false;
+static uint32_t g_registeredCount = 0;
+static constexpr uint32_t kExpectedCallbacks = {{callbackCount}};
 
 {{#callbacks}}
 static {{callbackTypeName}} g_{{callbackName}} = nullptr;
+static bool g_{{registerFlagName}} = false;
 {{/callbacks}}
 
 extern "C" {
   {{#registers}}
   void {{registerName}}({{callbackTypeName}} callback) {
     g_{{callbackName}} = callback;
-    g_isRegistered = true;
+    if (!g_{{registerFlagName}}) {
+      g_{{registerFlagName}} = true;
+      g_registeredCount++;
+    }
   }
   {{/registers}}
 }
 
 namespace {{bridgeNamespace}} {
   bool {{isEnabledName}}() {
-    return g_isRegistered;
+    return kExpectedCallbacks == 0 ? true : g_registeredCount == kExpectedCallbacks;
   }
 
   {{#methods}}
@@ -72,12 +77,14 @@ namespace {{bridgeNamespace}} {
 type Callback = {
   callbackTypeName: string;
   callbackName: string;
+  registerFlagName: string;
 };
 
 type Register = {
   registerName: string;
   callbackTypeName: string;
   callbackName: string;
+  registerFlagName: string;
 };
 
 type Method = {
@@ -132,6 +139,7 @@ export class CppBridgeCppTemplate {
       bridgeNamespace: this.bridgeNamespace,
       isEnabledName: this.isEnabledName,
       codegenNoticeLines: this.codegenNoticeLines.map((line) => ({ line })),
+      callbackCount: this.callbacks.length,
       callbacks: this.callbacks,
       registers: this.registers,
       methods: this.methods,

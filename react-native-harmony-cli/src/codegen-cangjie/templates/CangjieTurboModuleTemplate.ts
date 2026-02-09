@@ -27,6 +27,8 @@ import {{{name}}}
 
 var turboModule: ?{{className}} = None
 
+// 注意：对象/数组类型参数在桥接层以 JSON 字符串传入，需要业务侧自行解析。
+
 {{#aliases}}
 type {{name}} = {{{type}}}
 {{/aliases}}

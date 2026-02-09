@@ -30,8 +30,8 @@ export class TypeAnnotationToCangjie {
       case 'DoubleTypeAnnotation':
       case 'FloatTypeAnnotation':
       case 'NumberTypeAnnotation':
-        // Default to Int32 to align with existing PromiseResolve overloads.
-        return 'Int32';
+        // JS Number 对应双精度浮点，Cangjie 使用 Float64 保留精度。
+        return 'Float64';
       case 'StringEnumTypeAnnotation':
         return 'String';
       case 'Int32EnumTypeAnnotation':
@@ -41,7 +41,8 @@ export class TypeAnnotationToCangjie {
       case 'NullableTypeAnnotation':
         return `?${this.convert(typeAnnotation.typeAnnotation)}`;
       case 'ArrayTypeAnnotation':
-        return `Array<${this.convert(typeAnnotation.elementType)}>`;
+        // 数组参数在桥接层以 JSON 字符串传递，输出 String 提示业务自行解析。
+        return 'String';
       case 'TypeAliasTypeAnnotation':
         return typeAnnotation.name;
       case 'ReservedTypeAnnotation':
@@ -55,6 +56,7 @@ export class TypeAnnotationToCangjie {
       case 'GenericObjectTypeAnnotation':
       case 'MixedTypeAnnotation':
       case 'FunctionTypeAnnotation':
+        // 复杂类型统一使用 JSON 字符串占位，避免桥接层类型不匹配。
         return 'String';
       case 'PromiseTypeAnnotation':
         return this.convert(typeAnnotation.elementType);

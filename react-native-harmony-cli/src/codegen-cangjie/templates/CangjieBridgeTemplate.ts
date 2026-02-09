@@ -29,7 +29,7 @@ import {{{name}}}
 
 {{#methods}}
 @C
-func {{cFunctionName}}({{{stringifiedParams}}}): Unit {
+func {{cFunctionName}}({{{stringifiedParams}}}): {{returnType}} {
   {{#argConversions}}
   {{{line}}}
   {{/argConversions}}
@@ -46,10 +46,21 @@ func {{cFunctionName}}({{{stringifiedParams}}}): Unit {
     {{/isAsync}}
     {{^isAsync}}
     try {
+      {{#hasReturn}}
+      let result = module.{{name}}({{{callArgs}}})
+      {{#syncReturnLines}}
+      {{{line}}}
+      {{/syncReturnLines}}
+      {{/hasReturn}}
+      {{^hasReturn}}
       {{syncCallLine}}
+      {{/hasReturn}}
     } catch (e: Exception) { }
     {{/isAsync}}
   }
+  {{#hasReturn}}
+  return CJ_Object(CPointer<Unit>(), CJ_UndefinedKind)
+  {{/hasReturn}}
 }
 
 {{/methods}}
@@ -63,12 +74,15 @@ type Method = {
   name: string;
   cFunctionName: string;
   stringifiedParams: string;
+  returnType: string;
   callArgs: string;
   argConversions: { line: string }[];
   isAsync: boolean;
+  hasReturn: boolean;
   asyncCallLine: string;
   asyncResolveLine: string;
   syncCallLine: string;
+  syncReturnLines: { line: string }[];
 };
 
 export class CangjieBridgeTemplate {
