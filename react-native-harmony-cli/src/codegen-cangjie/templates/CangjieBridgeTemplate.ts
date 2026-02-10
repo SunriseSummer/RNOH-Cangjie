@@ -38,7 +38,9 @@ func {{cFunctionName}}({{{stringifiedParams}}}): {{returnType}} {
     spawn {
       try {
         {{{asyncCallLine}}}
-        {{{asyncResolveLine}}}
+        {{#asyncResolveLines}}
+        {{{line}}}
+        {{/asyncResolveLines}}
       } catch (e: Exception) {
         PromiseReject(promise, "{{name}} failed: " + e.toString())
       }
@@ -80,7 +82,7 @@ type Method = {
   isAsync: boolean;
   hasReturn: boolean;
   asyncCallLine: string;
-  asyncResolveLine: string;
+  asyncResolveLines: { line: string }[];
   syncCallLine: string;
   syncReturnLines: { line: string }[];
 };
