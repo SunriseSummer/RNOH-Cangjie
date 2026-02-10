@@ -88,7 +88,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieContent).toContain('getPrefetchResult(uri: String): ?String');
     expect(cangjieContent).toContain('getSize(uri: String): Array<Float64>');
     expect(cangjieContent).toContain(
-      'getSizeWithHeaders(uri: String, headers: String): String'
+      'getSizeWithHeaders(uri: String, headers: JsonValue): String'
     );
     expect(cangjieContent).toContain('getInt32Value(value: Int32): Int32');
     expect(cangjieContent).toContain('getInt32Values(values: Array<Int32>): Array<Int32>');
@@ -103,6 +103,9 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieBridgeContent).toContain('let urisJsonArray = urisJsonValue.asArray()');
     expect(cangjieBridgeContent).toContain(
       'urisArray[urisIndex] = urisArrayItem.asString().toString()'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let headersJsonValue = JsonValue.fromStr(headersValue)'
     );
     expect(cangjieBridgeContent).toContain(
       'let valuesArray = Array<Int32>(valuesJsonArray.size(), repeat: 0)'

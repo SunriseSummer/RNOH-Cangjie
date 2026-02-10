@@ -166,6 +166,24 @@ function resolveArrayTypeAnnotation(
 }
 
 /**
+ * 判断参数是否为对象类型（Object/GenericObject），用于决定是否生成 JsonValue。
+ * 这里会先展开 Nullable/TypeAlias，保证对 type alias 的处理一致。
+ */
+function isJsonObjectTypeAnnotation(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>
+): boolean {
+  const resolved = resolveAliasTypeAnnotation(
+    unwrapNullable(typeAnnotation),
+    aliasMap
+  );
+  return (
+    resolved.type === 'ObjectTypeAnnotation' ||
+    resolved.type === 'GenericObjectTypeAnnotation'
+  );
+}
+
+/**
  * 根据类型注解分类，决定桥接侧的参数处理方式。
  */
 function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
@@ -429,6 +447,18 @@ function buildCangjieArgConversion(
         needsJsonImport: true,
       };
     }
+  }
+  if (isJsonObjectTypeAnnotation(typeAnnotation, aliasMap)) {
+    const jsonValueName = `${paramName}JsonValue`;
+    // Object 参数需要把 JSON 字符串直接解析成 JsonValue，交由业务层继续取值。
+    lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
+    return {
+      convertedName: jsonValueName,
+      lines,
+      needsJsonStreamImport: false,
+      needsStdIoImport: false,
+      needsJsonImport: true,
+    };
   }
   return {
     convertedName: stringValueName,
@@ -834,10 +864,23 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       );
       const stringifiedArgs = prop.typeAnnotation.params
         .map((param) => {
-          const rawType = typeAnnotationToCangjie.convert(param.typeAnnotation);
+          const isObjectParam = isJsonObjectTypeAnnotation(
+            param.typeAnnotation,
+            schema.aliasMap
+          );
+          // Object 类型需要映射为 JsonValue，便于业务侧直接获取结构化 JSON。
+          const rawType = isObjectParam
+            ? 'JsonValue'
+            : typeAnnotationToCangjie.convert(param.typeAnnotation);
+          if (isObjectParam) {
+            cangjieTemplate.addImport('stdx.encoding.json.*');
+          }
           // 可选参数在 Cangjie 侧用 ?Type 表示，提醒业务处理 None。
-          const cangjieType =
-            param.optional && !rawType.startsWith('?') ? `?${rawType}` : rawType;
+          const needsOptional =
+            (param.optional ||
+              param.typeAnnotation.type === 'NullableTypeAnnotation') &&
+            !rawType.startsWith('?');
+          const cangjieType = needsOptional ? `?${rawType}` : rawType;
           return `${param.name}: ${cangjieType}`;
         })
         .join(', ');
