@@ -93,8 +93,12 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieBridgeContent).toContain('let resultJsonArray = JsonArray()');
     expect(cangjieBridgeContent).toContain('JsonFloat');
     expect(cangjieBridgeContent).toContain('PromiseResolve(promise, resultJsonArray)');
-    expect(cangjieBridgeContent).toContain('readValue<Array<String>>()');
-    expect(cangjieBridgeContent).toContain('PromiseResolveJson');
+    expect(cangjieBridgeContent).toContain('JsonValue.fromStr(urisValue)');
+    expect(cangjieBridgeContent).toContain('let urisJsonArray = urisJsonValue.asArray()');
+    expect(cangjieBridgeContent).toContain(
+      'urisArray[urisIndex] = urisArrayItem.asString().toString()'
+    );
+    expect(cangjieBridgeContent).toContain('PromiseResolveJson(promise, result)');
 
     expect(cppContent).toContain('double requestId = 0.0');
     expect(cppContent).toContain('if (count > 1 && args[1].isNumber())');
