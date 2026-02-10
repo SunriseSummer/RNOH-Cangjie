@@ -40,8 +40,25 @@ type ReturnKind =
   | 'boolean'
   | 'int32'
   | 'number'
+  | 'array'
   | 'json'
   | 'unknown';
+
+type ArrayElementKind = 'string' | 'int32' | 'number' | 'unknown';
+
+type ReturnTypeInfo = {
+  kind: ReturnKind;
+  isOptional: boolean;
+  arrayElementKind?: ArrayElementKind;
+};
+
+type ArrayTypeAnnotation = Extract<TypeAnnotation, { type: 'ArrayTypeAnnotation' }>;
+
+type SyncReturnInfo = {
+  needsLibC: boolean;
+  needsJsonImport: boolean;
+  lines: string[];
+};
 
 /**
  * 处理可空类型，便于后续按实际类型分支。
@@ -51,6 +68,94 @@ function unwrapNullable(typeAnnotation: TypeAnnotation): TypeAnnotation {
     return typeAnnotation.typeAnnotation;
   }
   return typeAnnotation;
+}
+
+/**
+ * 解析类型别名，避免数组/返回值判断时遗漏真实类型。
+ */
+function resolveAliasTypeAnnotation(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>,
+  visited: Set<string> = new Set()
+): TypeAnnotation {
+  if (typeAnnotation.type === 'TypeAliasTypeAnnotation') {
+    const alias = aliasMap[typeAnnotation.name];
+    if (alias && !visited.has(typeAnnotation.name)) {
+      visited.add(typeAnnotation.name);
+      return resolveAliasTypeAnnotation(alias, aliasMap, visited);
+    }
+  }
+  return typeAnnotation;
+}
+
+/**
+ * 提取数组元素类型，并分类为可桥接的基础类型。
+ */
+function getArrayElementKind(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>,
+  enumKindMap: Map<string, ReturnKind>
+): ArrayElementKind {
+  const resolved = resolveAliasTypeAnnotation(
+    unwrapNullable(typeAnnotation),
+    aliasMap
+  );
+  switch (resolved.type) {
+    case 'StringTypeAnnotation':
+    case 'StringEnumTypeAnnotation':
+      return 'string';
+    case 'Int32TypeAnnotation':
+    case 'Int32EnumTypeAnnotation':
+      return 'int32';
+    case 'DoubleTypeAnnotation':
+    case 'FloatTypeAnnotation':
+    case 'NumberTypeAnnotation':
+      return 'number';
+    case 'EnumDeclaration': {
+      const enumKind = enumKindMap.get(resolved.name);
+      if (enumKind === 'string') {
+        return 'string';
+      }
+      if (enumKind === 'int32') {
+        return 'int32';
+      }
+      return 'unknown';
+    }
+    case 'ReservedTypeAnnotation':
+      return resolved.name === 'RootTag' ? 'int32' : 'unknown';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
+ * 获取数组元素在 Cangjie 侧的类型描述。
+ */
+function getArrayElementCangjieType(kind: ArrayElementKind): string {
+  switch (kind) {
+    case 'string':
+      return 'String';
+    case 'int32':
+      return 'Int32';
+    case 'number':
+      return 'Float64';
+    default:
+      return 'String';
+  }
+}
+
+/**
+ * 解析数组类型（含别名/可空包装）。
+ */
+function resolveArrayTypeAnnotation(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>
+): ArrayTypeAnnotation | null {
+  const resolved = resolveAliasTypeAnnotation(
+    unwrapNullable(typeAnnotation),
+    aliasMap
+  );
+  return resolved.type === 'ArrayTypeAnnotation' ? resolved : null;
 }
 
 /**
@@ -236,14 +341,53 @@ function buildCppArgDeclaration(
 /**
  * 构建 Cangjie 侧参数转换逻辑（CString -> String）。
  */
-function buildCangjieArgConversion(paramName: string, ffiType: string) {
+function buildCangjieArgConversion(
+  paramName: string,
+  ffiType: string,
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>,
+  enumKindMap: Map<string, ReturnKind>
+) {
   if (ffiType !== 'CString') {
-    return { convertedName: paramName, lines: [] };
+    return {
+      convertedName: paramName,
+      lines: [],
+      needsJsonStreamImport: false,
+      needsStdIoImport: false,
+    };
   }
-  const convertedName = `${paramName}Value`;
+  const stringValueName = `${paramName}Value`;
+  const lines = [`let ${stringValueName} = ${paramName}.toString()`];
+  const arrayType = resolveArrayTypeAnnotation(typeAnnotation, aliasMap);
+  if (arrayType && arrayType.elementType) {
+    const elementKind = getArrayElementKind(
+      arrayType.elementType,
+      aliasMap,
+      enumKindMap
+    );
+    if (elementKind !== 'unknown') {
+      const readerName = `${paramName}Reader`;
+      const arrayName = `${paramName}Array`;
+      const arrayTypeName = getArrayElementCangjieType(elementKind);
+      lines.push(
+        `let ${readerName} = JsonReader(ByteBuffer(unsafe { ${stringValueName}.rawData() }))`
+      );
+      lines.push(
+        `let ${arrayName} = ${readerName}.readValue<Array<${arrayTypeName}>>()`
+      );
+      return {
+        convertedName: arrayName,
+        lines,
+        needsJsonStreamImport: true,
+        needsStdIoImport: true,
+      };
+    }
+  }
   return {
-    convertedName,
-    lines: [`let ${convertedName} = ${paramName}.toString()`],
+    convertedName: stringValueName,
+    lines,
+    needsJsonStreamImport: false,
+    needsStdIoImport: false,
   };
 }
 
@@ -251,110 +395,262 @@ function buildCangjieArgConversion(paramName: string, ffiType: string) {
  * 解析返回类型，决定同步返回/Promise Resolve 的包装策略。
  * 复杂对象与数组使用 JSON 字符串回传，保持 JS 侧结构一致。
  */
-function getReturnKind(
+function getReturnTypeInfo(
   typeAnnotation: TypeAnnotation,
   aliasMap: Record<string, TypeAnnotation>,
   enumKindMap: Map<string, ReturnKind>
-): ReturnKind {
-  const resolved = unwrapNullable(typeAnnotation);
-  switch (resolved.type) {
+): ReturnTypeInfo {
+  switch (typeAnnotation.type) {
+    case 'NullableTypeAnnotation': {
+      const inner = getReturnTypeInfo(
+        typeAnnotation.typeAnnotation,
+        aliasMap,
+        enumKindMap
+      );
+      return { ...inner, isOptional: true };
+    }
     case 'VoidTypeAnnotation':
-      return 'void';
+      return { kind: 'void', isOptional: false };
     case 'BooleanTypeAnnotation':
-      return 'boolean';
+      return { kind: 'boolean', isOptional: false };
     case 'StringTypeAnnotation':
     case 'StringEnumTypeAnnotation':
-      return 'string';
+      return { kind: 'string', isOptional: false };
     case 'Int32TypeAnnotation':
     case 'Int32EnumTypeAnnotation':
-      return 'int32';
+      return { kind: 'int32', isOptional: false };
     case 'DoubleTypeAnnotation':
     case 'FloatTypeAnnotation':
     case 'NumberTypeAnnotation':
-      return 'number';
-    case 'ArrayTypeAnnotation':
+      return { kind: 'number', isOptional: false };
+    case 'ArrayTypeAnnotation': {
+      if (!typeAnnotation.elementType) {
+        return { kind: 'json', isOptional: false };
+      }
+      const elementKind = getArrayElementKind(
+        typeAnnotation.elementType,
+        aliasMap,
+        enumKindMap
+      );
+      if (elementKind === 'unknown') {
+        return { kind: 'json', isOptional: false };
+      }
+      return {
+        kind: 'array',
+        isOptional: false,
+        arrayElementKind: elementKind,
+      };
+    }
     case 'ObjectTypeAnnotation':
     case 'GenericObjectTypeAnnotation':
     case 'UnionTypeAnnotation':
     case 'MixedTypeAnnotation':
     case 'ReservedPropTypeAnnotation':
-      return 'json';
+      return { kind: 'json', isOptional: false };
     case 'ReservedTypeAnnotation':
-      return resolved.name === 'RootTag' ? 'int32' : 'unknown';
+      return {
+        kind: typeAnnotation.name === 'RootTag' ? 'int32' : 'unknown',
+        isOptional: false,
+      };
     case 'TypeAliasTypeAnnotation': {
-      const alias = aliasMap[resolved.name];
-      return alias ? getReturnKind(alias, aliasMap, enumKindMap) : 'unknown';
+      const alias = aliasMap[typeAnnotation.name];
+      return alias
+        ? getReturnTypeInfo(alias, aliasMap, enumKindMap)
+        : { kind: 'unknown', isOptional: false };
     }
     case 'EnumDeclaration':
-      return enumKindMap.get(resolved.name) ?? 'unknown';
+      return {
+        kind: enumKindMap.get(typeAnnotation.name) ?? 'unknown',
+        isOptional: false,
+      };
     case 'PromiseTypeAnnotation':
-      return resolved.elementType
-        ? getReturnKind(resolved.elementType, aliasMap, enumKindMap)
-        : 'unknown';
+      return typeAnnotation.elementType
+        ? getReturnTypeInfo(typeAnnotation.elementType, aliasMap, enumKindMap)
+        : { kind: 'unknown', isOptional: false };
     default:
-      return 'unknown';
+      return { kind: 'unknown', isOptional: false };
   }
 }
 
 /**
- * 根据返回类型生成 Promise Resolve 语句。
+ * 构造数组转 JSON 的桥接代码片段。
  */
-function buildAsyncResolveLine(returnKind: ReturnKind): string {
-  if (returnKind === 'void') {
-    return 'PromiseResolve(promise)';
+function buildArrayJsonLines(
+  sourceName: string,
+  elementKind: ArrayElementKind,
+  arrayVarName: string
+) {
+  const lines = [`let ${arrayVarName} = JsonArray()`];
+  const elementName = `${arrayVarName}Item`;
+  lines.push(`for (${elementName} in ${sourceName}) {`);
+  switch (elementKind) {
+    case 'string':
+      lines.push(`  ${arrayVarName}.add(JsonString(${elementName}))`);
+      break;
+    case 'int32':
+      lines.push(
+        `  ${arrayVarName}.add(JsonInt(Int64(${elementName})))`
+      );
+      break;
+    case 'number':
+      lines.push(`  ${arrayVarName}.add(JsonFloat(${elementName}))`);
+      break;
+    default:
+      lines.push(`  ${arrayVarName}.add(JsonString(${elementName}.toString()))`);
+      break;
   }
-  if (returnKind === 'json') {
-    return 'PromiseResolveJson(promise, result.toString())';
+  lines.push('}');
+  return {
+    lines,
+    needsJsonImport: true,
+  };
+}
+
+/**
+ * 根据返回类型生成 Promise Resolve 语句，支持 Option 与数组。
+ */
+function buildAsyncResolveLines(returnTypeInfo: ReturnTypeInfo) {
+  const buildForValue = (valueName: string, info: ReturnTypeInfo) => {
+    if (info.kind === 'void') {
+      return { lines: ['PromiseResolve(promise)'], needsJsonImport: false };
+    }
+    if (info.kind === 'json') {
+      return {
+        lines: [`PromiseResolveJson(promise, ${valueName}.toString())`],
+        needsJsonImport: false,
+      };
+    }
+    if (info.kind === 'array' && info.arrayElementKind) {
+      const arrayVarName = `${valueName}JsonArray`;
+      const arrayInfo = buildArrayJsonLines(
+        valueName,
+        info.arrayElementKind,
+        arrayVarName
+      );
+      return {
+        lines: [...arrayInfo.lines, `PromiseResolve(promise, ${arrayVarName})`],
+        needsJsonImport: arrayInfo.needsJsonImport,
+      };
+    }
+    if (info.kind === 'unknown') {
+      return { lines: ['PromiseResolve(promise)'], needsJsonImport: false };
+    }
+    return { lines: [`PromiseResolve(promise, ${valueName})`], needsJsonImport: false };
+  };
+
+  if (returnTypeInfo.isOptional) {
+    const innerInfo = { ...returnTypeInfo, isOptional: false };
+    const inner = buildForValue('value', innerInfo);
+    return {
+      lines: [
+        `if (let Some(value) <- result) {`,
+        ...inner.lines.map((line) => `  ${line}`),
+        `} else {`,
+        `  PromiseResolve(promise)`,
+        `}`,
+      ],
+      needsJsonImport: inner.needsJsonImport,
+    };
   }
-  return 'PromiseResolve(promise, result)';
+  return buildForValue('result', returnTypeInfo);
 }
 
 /**
  * 构建同步返回 CJ_Object 的 Cangjie 代码片段。
  * 通过 CJ_ObjectKind 让 C++ 将 JSON 字符串还原为 JS 对象。
  */
-function buildSyncReturnLines(returnKind: ReturnKind) {
-  switch (returnKind) {
+function buildSyncReturnLines(
+  returnTypeInfo: ReturnTypeInfo,
+  resultName = 'result'
+): SyncReturnInfo {
+  if (returnTypeInfo.isOptional) {
+    const inner: SyncReturnInfo = buildSyncReturnLines(
+      { ...returnTypeInfo, isOptional: false },
+      'value'
+    );
+    return {
+      needsLibC: inner.needsLibC,
+      needsJsonImport: inner.needsJsonImport,
+      lines: [
+        `if (let Some(value) <- ${resultName}) {`,
+        ...inner.lines.map((line) => `  ${line}`),
+        `}`,
+        'return CJ_Object(CPointer<Unit>(), CJ_UndefinedKind)',
+      ],
+    };
+  }
+
+  switch (returnTypeInfo.kind) {
     case 'boolean':
       return {
         needsLibC: true,
+        needsJsonImport: false,
         lines: [
           'let cBoolValue = unsafe { LibC.malloc<Bool>(count: 1) }',
-          'cBoolValue.write(result)',
+          `cBoolValue.write(${resultName})`,
           'return CJ_Object(CPointer<Unit>(cBoolValue), CJ_BooleanKind)',
         ],
       };
     case 'int32':
       return {
         needsLibC: true,
+        needsJsonImport: false,
         lines: [
           'let cIntValue = unsafe { LibC.malloc<Int32>(count: 1) }',
-          'cIntValue.write(result)',
+          `cIntValue.write(${resultName})`,
           'return CJ_Object(CPointer<Unit>(cIntValue), CJ_NumberKind)',
         ],
       };
     case 'number':
       return {
         needsLibC: true,
+        needsJsonImport: false,
         lines: [
           'let cNumberValue = unsafe { LibC.malloc<Float64>(count: 1) }',
-          'cNumberValue.write(result)',
+          `cNumberValue.write(${resultName})`,
           'return CJ_Object(CPointer<Unit>(cNumberValue), CJ_NumberKind)',
         ],
       };
     case 'string':
       return {
         needsLibC: true,
+        needsJsonImport: false,
         lines: [
-          'let cStringValue = unsafe { LibC.mallocCString(result).getChars() }',
+          `let cStringValue = unsafe { LibC.mallocCString(${resultName}).getChars() }`,
           'return CJ_Object(CPointer<Unit>(cStringValue), CJ_StringKind)',
         ],
       };
+    case 'array': {
+      if (returnTypeInfo.arrayElementKind) {
+        const arrayVarName = `${resultName}JsonArray`;
+        const arrayInfo = buildArrayJsonLines(
+          resultName,
+          returnTypeInfo.arrayElementKind,
+          arrayVarName
+        );
+        return {
+          needsLibC: true,
+          needsJsonImport: arrayInfo.needsJsonImport,
+          lines: [
+            ...arrayInfo.lines,
+            `let jsonString = ${arrayVarName}.toString()`,
+            'let cJsonValue = unsafe { LibC.mallocCString(jsonString).getChars() }',
+            'return CJ_Object(CPointer<Unit>(cJsonValue), CJ_ObjectKind)',
+          ],
+        };
+      }
+      return {
+        needsLibC: false,
+        needsJsonImport: false,
+        lines: ['return CJ_Object(CPointer<Unit>(), CJ_UndefinedKind)'],
+      };
+    }
     case 'json':
       return {
         needsLibC: true,
+        needsJsonImport: false,
         lines: [
-          'let jsonString = result.toString()',
+          `let jsonString = ${resultName}.toString()`,
           'let cJsonValue = unsafe { LibC.mallocCString(jsonString).getChars() }',
           'return CJ_Object(CPointer<Unit>(cJsonValue), CJ_ObjectKind)',
         ],
@@ -362,6 +658,7 @@ function buildSyncReturnLines(returnKind: ReturnKind) {
     default:
       return {
         needsLibC: false,
+        needsJsonImport: false,
         lines: ['return CJ_Object(CPointer<Unit>(), CJ_UndefinedKind)'],
       };
   }
@@ -392,7 +689,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
     }
 
     const result = new Map<AbsolutePath, string>();
-    const typeAnnotationToCangjie = new TypeAnnotationToCangjie();
+    const typeAnnotationToCangjie = new TypeAnnotationToCangjie(schema.aliasMap);
     const moduleName = schema.moduleName;
     const className = `${moduleName}TurboModule`;
     const bridgeNamespace = `${moduleName}Bridge`;
@@ -471,11 +768,12 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         'PromiseTypeAnnotation';
       const returnTypeAnnotation = prop.typeAnnotation.returnTypeAnnotation;
       // 计算 JS 侧返回类型分支，用于同步/Promise 结果包装。
-      const returnKind = getReturnKind(
+      const returnTypeInfo = getReturnTypeInfo(
         returnTypeAnnotation,
         schema.aliasMap,
         enumKindMap
       );
+      const returnKind = returnTypeInfo.kind;
       const returnType = typeAnnotationToCangjie.convertReturnType(
         returnTypeAnnotation
       );
@@ -588,6 +886,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const cangjieFfiParams = prop.typeAnnotation.params.map((param) => ({
         name: param.name,
         ffiType: getCangjieFfiType(param.typeAnnotation),
+        typeAnnotation: param.typeAnnotation,
       }));
       const cangjieParams = cangjieFfiParams
         .map((param) => `${param.name}: ${param.ffiType}`)
@@ -598,26 +897,46 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
 
       const argConversions: { line: string }[] = [];
       const callArgs: string[] = [];
+      let needsJsonStreamImport = false;
+      let needsStdIoImport = false;
       cangjieFfiParams.forEach((param) => {
-        const conversion = buildCangjieArgConversion(param.name, param.ffiType);
+        const conversion = buildCangjieArgConversion(
+          param.name,
+          param.ffiType,
+          param.typeAnnotation,
+          schema.aliasMap,
+          enumKindMap
+        );
         argConversions.push(...conversion.lines.map((line) => ({ line })));
         callArgs.push(conversion.convertedName);
+        needsJsonStreamImport =
+          needsJsonStreamImport || conversion.needsJsonStreamImport;
+        needsStdIoImport = needsStdIoImport || conversion.needsStdIoImport;
       });
+      if (needsJsonStreamImport) {
+        bridgeTemplate.addImport('stdx.encoding.json.stream.*');
+      }
+      if (needsStdIoImport) {
+        bridgeTemplate.addImport('std.io.*');
+      }
 
       const callArgsString = callArgs.join(', ');
       const isVoidReturn = returnKind === 'void';
       const asyncCallLine = isVoidReturn
         ? `module.${methodName}(${callArgsString})`
         : `let result = module.${methodName}(${callArgsString})`;
-      const asyncResolveLine = buildAsyncResolveLine(returnKind);
+      const asyncResolveInfo = buildAsyncResolveLines(returnTypeInfo);
       const syncCallLine = isVoidReturn
         ? `module.${methodName}(${callArgsString})`
         : '';
       const syncReturnInfo = hasSyncReturn
-        ? buildSyncReturnLines(returnKind)
+        ? buildSyncReturnLines(returnTypeInfo)
         : null;
       if (syncReturnInfo?.needsLibC) {
         bridgeTemplate.addImport('std.io.*');
+      }
+      if (syncReturnInfo?.needsJsonImport || asyncResolveInfo.needsJsonImport) {
+        bridgeTemplate.addImport('stdx.encoding.json.*');
       }
 
       bridgeTemplate.addMethod({
@@ -632,9 +951,13 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         hasReturn: hasSyncReturn,
         returnType: hasSyncReturn ? 'CJ_Object' : 'Unit',
         asyncCallLine,
-        asyncResolveLine,
+        asyncResolveLines: asyncResolveInfo.lines.map((line: string) => ({
+          line,
+        })),
         syncCallLine,
-        syncReturnLines: (syncReturnInfo?.lines ?? []).map((line) => ({ line })),
+        syncReturnLines: (syncReturnInfo?.lines ?? ([] as string[])).map(
+          (line: string) => ({ line })
+        ),
       });
       foreignTemplate.addMethod({
         registerName: `register${pascalName}Callback`,

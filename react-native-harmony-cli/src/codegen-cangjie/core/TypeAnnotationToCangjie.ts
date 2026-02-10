@@ -12,6 +12,39 @@ import { TypeAnnotation } from '../../codegen/core/TypeAnnotationToTS';
  * 主要用于生成 TurboModule 方法签名与桥接声明。
  */
 export class TypeAnnotationToCangjie {
+  constructor(private aliasMap?: Record<string, TypeAnnotation>) {}
+
+  /**
+   * 数组元素允许映射到 Cangjie 的基础类型，超出范围则回退为 JSON 字符串。
+   */
+  private convertArrayElement(typeAnnotation: TypeAnnotation): string | null {
+    switch (typeAnnotation.type) {
+      case 'BooleanTypeAnnotation':
+        return 'Bool';
+      case 'StringTypeAnnotation':
+      case 'StringEnumTypeAnnotation':
+        return 'String';
+      case 'Int32TypeAnnotation':
+      case 'Int32EnumTypeAnnotation':
+        return 'Int32';
+      case 'DoubleTypeAnnotation':
+      case 'FloatTypeAnnotation':
+      case 'NumberTypeAnnotation':
+        return 'Float64';
+      case 'NullableTypeAnnotation': {
+        const inner = this.convertArrayElement(typeAnnotation.typeAnnotation);
+        return inner ? `?${inner}` : null;
+      }
+      case 'TypeAliasTypeAnnotation': {
+        const alias = this.aliasMap?.[typeAnnotation.name];
+        return alias ? this.convertArrayElement(alias) : null;
+      }
+      default:
+        // 复杂对象/嵌套数组统一回退为 JSON 字符串处理。
+        return null;
+    }
+  }
+
   /**
    * 将类型注解转换为 Cangjie 参数类型。
    * 缺省时返回 String，确保模板具备可编译性。
@@ -40,9 +73,13 @@ export class TypeAnnotationToCangjie {
         return typeAnnotation.name;
       case 'NullableTypeAnnotation':
         return `?${this.convert(typeAnnotation.typeAnnotation)}`;
-      case 'ArrayTypeAnnotation':
-        // 数组参数在桥接层以 JSON 字符串传递，输出 String 提示业务自行解析。
-        return 'String';
+      case 'ArrayTypeAnnotation': {
+        // 常见基础数组支持转换为 Cangjie Array<T>，复杂类型回退为 JSON 字符串。
+        const elementType = typeAnnotation.elementType
+          ? this.convertArrayElement(typeAnnotation.elementType)
+          : null;
+        return elementType ? `Array<${elementType}>` : 'String';
+      }
       case 'TypeAliasTypeAnnotation':
         return typeAnnotation.name;
       case 'ReservedTypeAnnotation':

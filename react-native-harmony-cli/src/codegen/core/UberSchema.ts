@@ -18,15 +18,93 @@ import {
   CodegenConfig,
   FS
 } from '../../core';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 // @ts-expect-error
 import extractUberSchemaFromSpecFilePaths_ from '@react-native/codegen/lib/cli/combine/combine-js-to-schema.js';
 import { CodegenError } from './CodegenError';
+
+const DEFAULT_PARAM_REGEX =
+  /(\b[$A-Za-z_][\w$]*)(\s*\?)?\s*:\s*([^,)=]+?)\s*=\s*([^,)]+)/g;
+
+/**
+ * 仅接受简单字面量作为默认值（字符串/数值/布尔/null）。
+ * 复杂表达式会被移除默认值以保证 Codegen 可以解析。
+ */
+function normalizeDefaultValue(rawValue: string): string | null {
+  const value = rawValue.trim();
+  if (value === 'true' || value === 'false' || value === 'null') {
+    return value;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(value)) {
+    return value;
+  }
+  if (/^(['"]).*\1$/.test(value)) {
+    return value;
+  }
+  return null;
+}
+
+/**
+ * 将 TS 接口方法参数的默认值语法转换为 WithDefault<>，
+ * 避免 RN Codegen 的解析器直接抛错。
+ */
+function transformDefaultParams(source: string): {
+  content: string;
+  didChange: boolean;
+} {
+  let didChange = false;
+  const content = source.replace(
+    DEFAULT_PARAM_REGEX,
+    (_match, name, optionalFlag, typeText, defaultText) => {
+      const normalizedDefault = normalizeDefaultValue(defaultText);
+      didChange = true;
+      if (normalizedDefault) {
+        return `${name}: WithDefault<${typeText.trim()}, ${normalizedDefault}>`;
+      }
+      const optionalSuffix = optionalFlag ?? '';
+      return `${name}${optionalSuffix}: ${typeText.trim()}`;
+    }
+  );
+  return { content, didChange };
+}
+
+/**
+ * 为 TS spec 文件预处理默认值语法，输出临时文件用于 Codegen。
+ */
+function prepareSpecFilePaths(
+  projectSourceFilePaths: AbsolutePath[]
+): AbsolutePath[] {
+  let tempDir: string | null = null;
+  return projectSourceFilePaths.map((specPath, index) => {
+    const filePath = specPath.getValue();
+    const ext = path.extname(filePath);
+    if (ext !== '.ts' && ext !== '.tsx') {
+      return specPath;
+    }
+    const source = fs.readFileSync(filePath, 'utf8');
+    const { content, didChange } = transformDefaultParams(source);
+    if (!didChange) {
+      return specPath;
+    }
+    if (!tempDir) {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rnoh-codegen-'));
+    }
+    const tempPath = path.join(
+      tempDir,
+      `${index}-${path.basename(filePath)}`
+    );
+    fs.writeFileSync(tempPath, content);
+    return new AbsolutePath(tempPath);
+  });
+}
 
 function createRawUberSchemaFromSpecFilePaths(
   projectSourceFilePaths: AbsolutePath[]
 ): RawUberSchema {
   return extractUberSchemaFromSpecFilePaths_(
-    projectSourceFilePaths.map((p) => p.getValue())
+    prepareSpecFilePaths(projectSourceFilePaths).map((p) => p.getValue())
   );
 }
 
