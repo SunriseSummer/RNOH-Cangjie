@@ -44,7 +44,7 @@ type ReturnKind =
   | 'json'
   | 'unknown';
 
-type ArrayElementKind = 'string' | 'int32' | 'number' | 'unknown';
+type ArrayElementKind = 'string' | 'boolean' | 'int32' | 'number' | 'unknown';
 
 type ReturnTypeInfo = {
   kind: ReturnKind;
@@ -104,6 +104,8 @@ function getArrayElementKind(
     case 'StringTypeAnnotation':
     case 'StringEnumTypeAnnotation':
       return 'string';
+    case 'BooleanTypeAnnotation':
+      return 'boolean';
     case 'Int32TypeAnnotation':
     case 'Int32EnumTypeAnnotation':
       return 'int32';
@@ -135,6 +137,8 @@ function getArrayElementCangjieType(kind: ArrayElementKind): string {
   switch (kind) {
     case 'string':
       return 'String';
+    case 'boolean':
+      return 'Bool';
     case 'int32':
       return 'Int32';
     case 'number':
@@ -384,15 +388,19 @@ function buildCangjieArgConversion(
       const arrayDefaultValue =
         elementKind === 'string'
           ? '""'
-          : elementKind === 'int32'
-            ? '0'
-            : '0.0';
+          : elementKind === 'boolean'
+            ? 'false'
+            : elementKind === 'int32'
+              ? '0'
+              : '0.0';
       const arrayElementValue =
         elementKind === 'string'
           ? `${arrayItemName}.asString().toString()`
-          : elementKind === 'int32'
-            ? `Int32(${arrayItemName}.asInt().getValue())`
-            : `${arrayItemName}.asFloat().getValue()`;
+          : elementKind === 'boolean'
+            ? `${arrayItemName}.asBool()`
+            : elementKind === 'int32'
+              ? `Int32(${arrayItemName}.asInt().getValue())`
+              : `${arrayItemName}.asFloat().getValue()`;
       // Array 参数需要把 JSON 字符串解析成 JsonValue，再转换为 JsonArray。
       // 这样可以逐个取出 JsonValue 元素并转成目标类型，避免 JsonReader 解析失效。
       lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
@@ -519,6 +527,9 @@ function buildArrayJsonLines(
   switch (elementKind) {
     case 'string':
       lines.push(`  ${arrayVarName}.add(JsonString(${elementName}))`);
+      break;
+    case 'boolean':
+      lines.push(`  ${arrayVarName}.add(JsonBool(${elementName}))`);
       break;
     case 'int32':
       lines.push(

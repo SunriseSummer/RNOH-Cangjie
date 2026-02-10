@@ -40,6 +40,7 @@ export type StringList = Array<string>;
 export interface Spec extends TurboModule {
   queryStrings(uris: StringList): Promise<Object>;
   queryNumbers(values: Array<number>): Promise<Object>;
+  queryFlags(flags: Array<boolean>): Promise<Object>;
 }
 
 export default TurboModuleRegistry.get<Spec>('Sample')!;
@@ -80,6 +81,14 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     );
     expect(cangjieBridgeContent).toContain(
       'valuesArray[valuesIndex] = valuesArrayItem.asFloat().getValue()'
+    );
+    expect(cangjieBridgeContent).toContain('let flagsJsonValue = JsonValue.fromStr(flagsValue)');
+    expect(cangjieBridgeContent).toContain('let flagsJsonArray = flagsJsonValue.asArray()');
+    expect(cangjieBridgeContent).toContain(
+      'let flagsArray = Array<Bool>(flagsJsonArray.size(), repeat: false)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'flagsArray[flagsIndex] = flagsArrayItem.asBool()'
     );
   });
 });
