@@ -27,6 +27,7 @@ import { CodegenError } from './CodegenError';
 
 const DEFAULT_PARAM_REGEX =
   /(\b[$A-Za-z_][\w$]*)(\s*\?)?\s*:\s*([^,)=]+?)\s*=\s*([^,)]+)/g;
+const INT32_TYPE_REGEX = /\bint32\b/g;
 
 /**
  * 仅接受简单字面量作为默认值（字符串/数值/布尔/null）。
@@ -71,7 +72,18 @@ function transformDefaultParams(source: string): {
 }
 
 /**
- * 为 TS spec 文件预处理默认值语法，输出临时文件用于 Codegen。
+ * 将 int32 类型别名统一替换为 Codegen 可识别的 Int32。
+ */
+function transformInt32Types(source: string): {
+  content: string;
+  didChange: boolean;
+} {
+  const content = source.replace(INT32_TYPE_REGEX, 'Int32');
+  return { content, didChange: content !== source };
+}
+
+/**
+ * 为 TS spec 文件预处理默认参数和 int32 类型别名，输出临时文件用于 Codegen。
  */
 function prepareSpecFilePaths(
   projectSourceFilePaths: AbsolutePath[]
@@ -84,7 +96,10 @@ function prepareSpecFilePaths(
       return specPath;
     }
     const source = fs.readFileSync(filePath, 'utf8');
-    const { content, didChange } = transformDefaultParams(source);
+    const defaultTransformed = transformDefaultParams(source);
+    const int32Transformed = transformInt32Types(defaultTransformed.content);
+    const content = int32Transformed.content;
+    const didChange = defaultTransformed.didChange || int32Transformed.didChange;
     if (!didChange) {
       return specPath;
     }

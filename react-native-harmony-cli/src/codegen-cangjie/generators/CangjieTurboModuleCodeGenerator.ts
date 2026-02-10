@@ -44,7 +44,7 @@ type ReturnKind =
   | 'json'
   | 'unknown';
 
-type ArrayElementKind = 'string' | 'int32' | 'number' | 'unknown';
+type ArrayElementKind = 'string' | 'boolean' | 'int32' | 'number' | 'unknown';
 
 type ReturnTypeInfo = {
   kind: ReturnKind;
@@ -84,6 +84,9 @@ function resolveAliasTypeAnnotation(
       visited.add(typeAnnotation.name);
       return resolveAliasTypeAnnotation(alias, aliasMap, visited);
     }
+    if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
+      return { type: 'Int32TypeAnnotation' } as TypeAnnotation;
+    }
   }
   return typeAnnotation;
 }
@@ -104,6 +107,8 @@ function getArrayElementKind(
     case 'StringTypeAnnotation':
     case 'StringEnumTypeAnnotation':
       return 'string';
+    case 'BooleanTypeAnnotation':
+      return 'boolean';
     case 'Int32TypeAnnotation':
     case 'Int32EnumTypeAnnotation':
       return 'int32';
@@ -135,6 +140,8 @@ function getArrayElementCangjieType(kind: ArrayElementKind): string {
   switch (kind) {
     case 'string':
       return 'String';
+    case 'boolean':
+      return 'Bool';
     case 'int32':
       return 'Int32';
     case 'number':
@@ -186,6 +193,10 @@ function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
         return 'int32';
       }
       return 'unknown';
+    case 'TypeAliasTypeAnnotation':
+      return resolved.name === 'int32' || resolved.name === 'Int32'
+        ? 'int32'
+        : 'unknown';
     default:
       return 'unknown';
   }
@@ -341,19 +352,28 @@ function buildCppArgDeclaration(
 /**
  * 构建 Cangjie 侧参数转换逻辑（CString -> String）。
  */
+type CangjieArgConversion = {
+  convertedName: string;
+  lines: string[];
+  needsJsonStreamImport: boolean;
+  needsStdIoImport: boolean;
+  needsJsonImport: boolean;
+};
+
 function buildCangjieArgConversion(
   paramName: string,
   ffiType: string,
   typeAnnotation: TypeAnnotation,
   aliasMap: Record<string, TypeAnnotation>,
   enumKindMap: Map<string, ReturnKind>
-) {
+): CangjieArgConversion {
   if (ffiType !== 'CString') {
     return {
       convertedName: paramName,
       lines: [],
       needsJsonStreamImport: false,
       needsStdIoImport: false,
+      needsJsonImport: false,
     };
   }
   const stringValueName = `${paramName}Value`;
@@ -366,20 +386,47 @@ function buildCangjieArgConversion(
       enumKindMap
     );
     if (elementKind !== 'unknown') {
-      const readerName = `${paramName}Reader`;
+      const jsonValueName = `${paramName}JsonValue`;
+      const jsonArrayName = `${paramName}JsonArray`;
       const arrayName = `${paramName}Array`;
+      const arrayItemName = `${paramName}ArrayItem`;
+      const arrayIndexName = `${paramName}Index`;
       const arrayTypeName = getArrayElementCangjieType(elementKind);
+      const arrayDefaultValue =
+        elementKind === 'string'
+          ? '""'
+          : elementKind === 'boolean'
+            ? 'false'
+            : elementKind === 'int32'
+              ? '0'
+              : '0.0';
+      const arrayElementValue =
+        elementKind === 'string'
+          ? `${arrayItemName}.asString().toString()`
+          : elementKind === 'boolean'
+            ? `${arrayItemName}.asBool().getValue()`
+            : elementKind === 'int32'
+              ? `Int32(${arrayItemName}.asInt().getValue())`
+              : `${arrayItemName}.asFloat().getValue()`;
+      // Array 参数需要把 JSON 字符串解析成 JsonValue，再转换为 JsonArray。
+      // 这样可以逐个取出 JsonValue 元素并转成目标类型，避免 JsonReader 解析失效。
+      lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
+      lines.push(`let ${jsonArrayName} = ${jsonValueName}.asArray()`);
+      // 先用 JsonArray 的 size 初始化数组，再按索引填充，确保元素顺序稳定。
       lines.push(
-        `let ${readerName} = JsonReader(ByteBuffer(unsafe { ${stringValueName}.rawData() }))`
+        `let ${arrayName} = Array<${arrayTypeName}>(${jsonArrayName}.size(), repeat: ${arrayDefaultValue})`
       );
-      lines.push(
-        `let ${arrayName} = ${readerName}.readValue<Array<${arrayTypeName}>>()`
-      );
+      lines.push(`var ${arrayIndexName} = 0`);
+      lines.push(`for (${arrayItemName} in ${jsonArrayName}) {`);
+      lines.push(`  ${arrayName}[${arrayIndexName}] = ${arrayElementValue}`);
+      lines.push(`  ${arrayIndexName} += 1`);
+      lines.push('}');
       return {
         convertedName: arrayName,
         lines,
-        needsJsonStreamImport: true,
-        needsStdIoImport: true,
+        needsJsonStreamImport: false,
+        needsStdIoImport: false,
+        needsJsonImport: true,
       };
     }
   }
@@ -388,6 +435,7 @@ function buildCangjieArgConversion(
     lines,
     needsJsonStreamImport: false,
     needsStdIoImport: false,
+    needsJsonImport: false,
   };
 }
 
@@ -454,9 +502,13 @@ function getReturnTypeInfo(
       };
     case 'TypeAliasTypeAnnotation': {
       const alias = aliasMap[typeAnnotation.name];
-      return alias
-        ? getReturnTypeInfo(alias, aliasMap, enumKindMap)
-        : { kind: 'unknown', isOptional: false };
+      if (alias) {
+        return getReturnTypeInfo(alias, aliasMap, enumKindMap);
+      }
+      if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
+        return { kind: 'int32', isOptional: false };
+      }
+      return { kind: 'unknown', isOptional: false };
     }
     case 'EnumDeclaration':
       return {
@@ -487,6 +539,9 @@ function buildArrayJsonLines(
     case 'string':
       lines.push(`  ${arrayVarName}.add(JsonString(${elementName}))`);
       break;
+    case 'boolean':
+      lines.push(`  ${arrayVarName}.add(JsonBool(${elementName}))`);
+      break;
     case 'int32':
       lines.push(
         `  ${arrayVarName}.add(JsonInt(Int64(${elementName})))`
@@ -516,7 +571,7 @@ function buildAsyncResolveLines(returnTypeInfo: ReturnTypeInfo) {
     }
     if (info.kind === 'json') {
       return {
-        lines: [`PromiseResolveJson(promise, ${valueName}.toString())`],
+        lines: [`PromiseResolveJson(promise, ${valueName})`],
         needsJsonImport: false,
       };
     }
@@ -899,6 +954,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const callArgs: string[] = [];
       let needsJsonStreamImport = false;
       let needsStdIoImport = false;
+      let needsJsonImport = false;
       cangjieFfiParams.forEach((param) => {
         const conversion = buildCangjieArgConversion(
           param.name,
@@ -912,12 +968,16 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         needsJsonStreamImport =
           needsJsonStreamImport || conversion.needsJsonStreamImport;
         needsStdIoImport = needsStdIoImport || conversion.needsStdIoImport;
+        needsJsonImport = needsJsonImport || conversion.needsJsonImport;
       });
       if (needsJsonStreamImport) {
         bridgeTemplate.addImport('stdx.encoding.json.stream.*');
       }
       if (needsStdIoImport) {
         bridgeTemplate.addImport('std.io.*');
+      }
+      if (needsJsonImport) {
+        bridgeTemplate.addImport('stdx.encoding.json.*');
       }
 
       const callArgsString = callArgs.join(', ');

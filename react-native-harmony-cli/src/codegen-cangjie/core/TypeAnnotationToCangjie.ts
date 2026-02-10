@@ -36,6 +36,9 @@ export class TypeAnnotationToCangjie {
         return inner ? `?${inner}` : null;
       }
       case 'TypeAliasTypeAnnotation': {
+        if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
+          return 'Int32';
+        }
         const alias = this.aliasMap?.[typeAnnotation.name];
         return alias ? this.convertArrayElement(alias) : null;
       }
@@ -81,7 +84,9 @@ export class TypeAnnotationToCangjie {
         return elementType ? `Array<${elementType}>` : 'String';
       }
       case 'TypeAliasTypeAnnotation':
-        return typeAnnotation.name;
+        return typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32'
+          ? 'Int32'
+          : typeAnnotation.name;
       case 'ReservedTypeAnnotation':
         if (typeAnnotation.name === 'RootTag') {
           return 'Int32';
