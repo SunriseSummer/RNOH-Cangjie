@@ -13,7 +13,7 @@ import { UberSchema } from '../src/codegen';
 import { CangjieTurboModuleCodeGenerator } from '../src/codegen-cangjie';
 
 /**
- * 覆盖 Array 参数的 JSON 解析路径，确保 JsonValue/JsonArray 逻辑生成正确。
+ * 覆盖 Array 参数的 JSON 解析路径，确保 JsonValue 逻辑生成正确。
  */
 describe('CangjieTurboModuleCodeGenerator array conversions', () => {
   let tmpDir: tmp.DirResult | null = null;
@@ -23,10 +23,11 @@ describe('CangjieTurboModuleCodeGenerator array conversions', () => {
   });
 
   afterEach(() => {
+    tmpDir?.removeCallback();
     tmpDir = null;
   });
 
-  it('generates JsonValue-based array parsing for string/number aliases', () => {
+  it('generates JsonValue parsing for array parameters', () => {
     const tempDirPath = tmpDir!.name;
     const specPath = path.join(tempDirPath, 'NativeArraySpec.ts');
     fs.writeFileSync(
@@ -70,25 +71,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       )?.[1] ?? '';
 
     expect(cangjieBridgeContent).toContain('let urisJsonValue = JsonValue.fromStr(urisValue)');
-    expect(cangjieBridgeContent).toContain('let urisJsonArray = urisJsonValue.asArray()');
-    expect(cangjieBridgeContent).toContain(
-      'urisArray[urisIndex] = urisArrayItem.asString().toString()'
-    );
     expect(cangjieBridgeContent).toContain('let valuesJsonValue = JsonValue.fromStr(valuesValue)');
-    expect(cangjieBridgeContent).toContain('let valuesJsonArray = valuesJsonValue.asArray()');
-    expect(cangjieBridgeContent).toContain(
-      'let valuesArray = Array<Float64>(valuesJsonArray.size(), repeat: 0.0)'
-    );
-    expect(cangjieBridgeContent).toContain(
-      'valuesArray[valuesIndex] = valuesArrayItem.asFloat().getValue()'
-    );
     expect(cangjieBridgeContent).toContain('let flagsJsonValue = JsonValue.fromStr(flagsValue)');
-    expect(cangjieBridgeContent).toContain('let flagsJsonArray = flagsJsonValue.asArray()');
-    expect(cangjieBridgeContent).toContain(
-      'let flagsArray = Array<Bool>(flagsJsonArray.size(), repeat: false)'
-    );
-    expect(cangjieBridgeContent).toContain(
-      'flagsArray[flagsIndex] = flagsArrayItem.asBool().getValue()'
-    );
   });
 });
