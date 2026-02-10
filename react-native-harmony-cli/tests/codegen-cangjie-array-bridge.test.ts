@@ -27,7 +27,7 @@ describe('CangjieTurboModuleCodeGenerator array conversions', () => {
     tmpDir = null;
   });
 
-  it('generates JsonValue parsing for array parameters', () => {
+  it('generates typed array parsing and JsonValue fallback for complex arrays', () => {
     const tempDirPath = tmpDir!.name;
     const specPath = path.join(tempDirPath, 'NativeArraySpec.ts');
     fs.writeFileSync(
@@ -42,6 +42,7 @@ export interface Spec extends TurboModule {
   queryStrings(uris: StringList): Promise<Object>;
   queryNumbers(values: Array<number>): Promise<Object>;
   queryFlags(flags: Array<boolean>): Promise<Object>;
+  queryObjects(items: Array<Object>): Promise<Object>;
 }
 
 export default TurboModuleRegistry.get<Spec>('Sample')!;
@@ -71,7 +72,28 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       )?.[1] ?? '';
 
     expect(cangjieBridgeContent).toContain('let urisJsonValue = JsonValue.fromStr(urisValue)');
+    expect(cangjieBridgeContent).toContain('let urisJsonArray = urisJsonValue.asArray()');
+    expect(cangjieBridgeContent).toContain(
+      'urisArray[urisIndex] = urisArrayItem.asString().toString()'
+    );
     expect(cangjieBridgeContent).toContain('let valuesJsonValue = JsonValue.fromStr(valuesValue)');
+    expect(cangjieBridgeContent).toContain('let valuesJsonArray = valuesJsonValue.asArray()');
+    expect(cangjieBridgeContent).toContain(
+      'let valuesArray = Array<Float64>(valuesJsonArray.size(), repeat: 0.0)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'valuesArray[valuesIndex] = valuesArrayItem.asFloat().getValue()'
+    );
     expect(cangjieBridgeContent).toContain('let flagsJsonValue = JsonValue.fromStr(flagsValue)');
+    expect(cangjieBridgeContent).toContain('let flagsJsonArray = flagsJsonValue.asArray()');
+    expect(cangjieBridgeContent).toContain(
+      'let flagsArray = Array<Bool>(flagsJsonArray.size(), repeat: false)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'flagsArray[flagsIndex] = flagsArrayItem.asBool().getValue()'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let itemsJsonValue = JsonValue.fromStr(itemsValue)'
+    );
   });
 });

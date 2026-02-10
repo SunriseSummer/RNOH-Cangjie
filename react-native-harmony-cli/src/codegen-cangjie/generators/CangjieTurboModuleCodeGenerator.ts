@@ -134,6 +134,24 @@ function getArrayElementKind(
 }
 
 /**
+ * 获取数组元素在 Cangjie 侧的类型描述。
+ */
+function getArrayElementCangjieType(kind: ArrayElementKind): string {
+  switch (kind) {
+    case 'string':
+      return 'String';
+    case 'boolean':
+      return 'Bool';
+    case 'int32':
+      return 'Int32';
+    case 'number':
+      return 'Float64';
+    default:
+      return 'String';
+  }
+}
+
+/**
  * 解析数组类型（含别名/可空包装）。
  */
 function resolveArrayTypeAnnotation(
@@ -148,14 +166,27 @@ function resolveArrayTypeAnnotation(
 }
 
 /**
- * 判断参数是否为数组类型，用于决定是否生成 JsonValue。
+ * 判断参数是否为非基础数组类型，用于决定是否生成 JsonValue。
  * 这里会展开 Nullable/TypeAlias，确保数组别名也被识别。
  */
-function isJsonArrayTypeAnnotation(
+function shouldUseJsonValueForArray(
   typeAnnotation: TypeAnnotation,
-  aliasMap: Record<string, TypeAnnotation>
+  aliasMap: Record<string, TypeAnnotation>,
+  enumKindMap: Map<string, ReturnKind>
 ): boolean {
-  return resolveArrayTypeAnnotation(typeAnnotation, aliasMap) !== null;
+  const arrayType = resolveArrayTypeAnnotation(typeAnnotation, aliasMap);
+  if (!arrayType) {
+    return false;
+  }
+  if (!arrayType.elementType) {
+    return true;
+  }
+  const elementKind = getArrayElementKind(
+    arrayType.elementType,
+    aliasMap,
+    enumKindMap
+  );
+  return elementKind === 'unknown';
 }
 
 /**
@@ -377,7 +408,8 @@ function buildCangjieArgConversion(
   paramName: string,
   ffiType: string,
   typeAnnotation: TypeAnnotation,
-  aliasMap: Record<string, TypeAnnotation>
+  aliasMap: Record<string, TypeAnnotation>,
+  enumKindMap: Map<string, ReturnKind>
 ): CangjieArgConversion {
   if (ffiType !== 'CString') {
     return {
@@ -390,9 +422,61 @@ function buildCangjieArgConversion(
   }
   const stringValueName = `${paramName}Value`;
   const lines = [`let ${stringValueName} = ${paramName}.toString()`];
-  if (isJsonArrayTypeAnnotation(typeAnnotation, aliasMap)) {
+  const arrayType = resolveArrayTypeAnnotation(typeAnnotation, aliasMap);
+  if (arrayType && arrayType.elementType) {
+    const elementKind = getArrayElementKind(
+      arrayType.elementType,
+      aliasMap,
+      enumKindMap
+    );
+    if (elementKind !== 'unknown') {
+      const jsonValueName = `${paramName}JsonValue`;
+      const jsonArrayName = `${paramName}JsonArray`;
+      const arrayName = `${paramName}Array`;
+      const arrayItemName = `${paramName}ArrayItem`;
+      const arrayIndexName = `${paramName}Index`;
+      const arrayTypeName = getArrayElementCangjieType(elementKind);
+      const arrayDefaultValue =
+        elementKind === 'string'
+          ? '""'
+          : elementKind === 'boolean'
+            ? 'false'
+            : elementKind === 'int32'
+              ? '0'
+              : '0.0';
+      const arrayElementValue =
+        elementKind === 'string'
+          ? `${arrayItemName}.asString().toString()`
+          : elementKind === 'boolean'
+            ? `${arrayItemName}.asBool().getValue()`
+            : elementKind === 'int32'
+              ? `Int32(${arrayItemName}.asInt().getValue())`
+              : `${arrayItemName}.asFloat().getValue()`;
+      // Array 参数需要把 JSON 字符串解析成 JsonValue，再转换为 JsonArray。
+      // 这样可以逐个取出 JsonValue 元素并转成目标类型，避免 JsonReader 解析失效。
+      lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
+      lines.push(`let ${jsonArrayName} = ${jsonValueName}.asArray()`);
+      // 先用 JsonArray 的 size 初始化数组，再按索引填充，确保元素顺序稳定。
+      lines.push(
+        `let ${arrayName} = Array<${arrayTypeName}>(${jsonArrayName}.size(), repeat: ${arrayDefaultValue})`
+      );
+      lines.push(`var ${arrayIndexName} = 0`);
+      lines.push(`for (${arrayItemName} in ${jsonArrayName}) {`);
+      lines.push(`  ${arrayName}[${arrayIndexName}] = ${arrayElementValue}`);
+      lines.push(`  ${arrayIndexName} += 1`);
+      lines.push('}');
+      return {
+        convertedName: arrayName,
+        lines,
+        needsJsonStreamImport: false,
+        needsStdIoImport: false,
+        needsJsonImport: true,
+      };
+    }
+  }
+  if (arrayType) {
     const jsonValueName = `${paramName}JsonValue`;
-    // Array 参数仅需解析为 JsonValue，交由业务层自行转换。
+    // 非基础元素数组仅需解析为 JsonValue，交由业务层自行转换。
     lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
     return {
       convertedName: jsonValueName,
@@ -822,16 +906,17 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
             param.typeAnnotation,
             schema.aliasMap
           );
-          const isArrayParam = isJsonArrayTypeAnnotation(
+          const useJsonValueForArray = shouldUseJsonValueForArray(
             param.typeAnnotation,
-            schema.aliasMap
+            schema.aliasMap,
+            enumKindMap
           );
-          // Object/Array 类型需要映射为 JsonValue，便于业务侧直接获取结构化 JSON。
+          // Object/非基础数组类型需要映射为 JsonValue，便于业务侧直接获取结构化 JSON。
           const rawType =
-            isObjectParam || isArrayParam
+            isObjectParam || useJsonValueForArray
               ? 'JsonValue'
               : typeAnnotationToCangjie.convert(param.typeAnnotation);
-          if (isObjectParam || isArrayParam) {
+          if (isObjectParam || useJsonValueForArray) {
             cangjieTemplate.addImport('stdx.encoding.json.*');
           }
           // 可选参数在 Cangjie 侧用 ?Type 表示，提醒业务处理 None。
@@ -962,7 +1047,8 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
           param.name,
           param.ffiType,
           param.typeAnnotation,
-          schema.aliasMap
+          schema.aliasMap,
+          enumKindMap
         );
         argConversions.push(...conversion.lines.map((line) => ({ line })));
         callArgs.push(conversion.convertedName);

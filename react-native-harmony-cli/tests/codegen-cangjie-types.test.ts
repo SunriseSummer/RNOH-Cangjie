@@ -46,6 +46,7 @@ export interface Spec extends TurboModule {
   getInt32Values(values: Array<int32>): Array<int32>
   getInt32Async(value: int32): Promise<int32>
   queryCache(uris: Array<string>): Promise<Object>
+  sendConfigs(configs: Array<Object>): void
 }
 
 export default TurboModuleRegistry.get<Spec>('Sample')!;
@@ -91,17 +92,31 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       'getSizeWithHeaders(uri: String, headers: JsonValue): String'
     );
     expect(cangjieContent).toContain('getInt32Value(value: Int32): Int32');
-    expect(cangjieContent).toContain('getInt32Values(values: JsonValue): Array<Int32>');
+    expect(cangjieContent).toContain('getInt32Values(values: Array<Int32>): Array<Int32>');
     expect(cangjieContent).toContain('getInt32Async(value: Int32): Int32');
-    expect(cangjieContent).toContain('queryCache(uris: JsonValue): String');
+    expect(cangjieContent).toContain('queryCache(uris: Array<String>): String');
+    expect(cangjieContent).toContain('sendConfigs(configs: JsonValue): Unit');
 
     expect(cangjieBridgeContent).toContain('if (let Some(value) <- result)');
     expect(cangjieBridgeContent).toContain('let resultJsonArray = JsonArray()');
     expect(cangjieBridgeContent).toContain('JsonFloat');
     expect(cangjieBridgeContent).toContain('PromiseResolve(promise, resultJsonArray)');
     expect(cangjieBridgeContent).toContain('let urisJsonValue = JsonValue.fromStr(urisValue)');
+    expect(cangjieBridgeContent).toContain('let urisJsonArray = urisJsonValue.asArray()');
+    expect(cangjieBridgeContent).toContain(
+      'urisArray[urisIndex] = urisArrayItem.asString().toString()'
+    );
     expect(cangjieBridgeContent).toContain(
       'let headersJsonValue = JsonValue.fromStr(headersValue)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let valuesArray = Array<Int32>(valuesJsonArray.size(), repeat: 0)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'valuesArray[valuesIndex] = Int32(valuesArrayItem.asInt().getValue())'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let configsJsonValue = JsonValue.fromStr(configsValue)'
     );
     expect(cangjieBridgeContent).toContain('PromiseResolveJson(promise, result)');
 
