@@ -83,7 +83,7 @@ function transformInt32Types(source: string): {
 }
 
 /**
- * 为 TS spec 文件预处理默认值语法与 int32 别名，输出临时文件用于 Codegen。
+ * 为 TS spec 文件预处理默认参数和 int32 类型别名，输出临时文件用于 Codegen。
  */
 function prepareSpecFilePaths(
   projectSourceFilePaths: AbsolutePath[]
