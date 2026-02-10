@@ -168,6 +168,8 @@ function resolveArrayTypeAnnotation(
 /**
  * 判断参数是否为对象类型（Object/GenericObject），用于决定是否生成 JsonValue。
  * 这里会先展开 Nullable/TypeAlias，保证对 type alias 的处理一致。
+ * 返回 true：ObjectTypeAnnotation / GenericObjectTypeAnnotation（含别名包装）。
+ * 返回 false：保持原有 String/Array/数值等转换路径。
  */
 function isJsonObjectTypeAnnotation(
   typeAnnotation: TypeAnnotation,

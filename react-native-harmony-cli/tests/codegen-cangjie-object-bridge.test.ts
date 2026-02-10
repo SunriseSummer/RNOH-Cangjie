@@ -24,6 +24,7 @@ describe('CangjieTurboModuleCodeGenerator object conversions', () => {
   });
 
   afterEach(() => {
+    tmpDir?.removeCallback();
     tmpDir = null;
   });
 
