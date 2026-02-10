@@ -84,6 +84,9 @@ function resolveAliasTypeAnnotation(
       visited.add(typeAnnotation.name);
       return resolveAliasTypeAnnotation(alias, aliasMap, visited);
     }
+    if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
+      return { type: 'Int32TypeAnnotation' } as TypeAnnotation;
+    }
   }
   return typeAnnotation;
 }
@@ -190,6 +193,10 @@ function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
         return 'int32';
       }
       return 'unknown';
+    case 'TypeAliasTypeAnnotation':
+      return resolved.name === 'int32' || resolved.name === 'Int32'
+        ? 'int32'
+        : 'unknown';
     default:
       return 'unknown';
   }
@@ -397,7 +404,7 @@ function buildCangjieArgConversion(
         elementKind === 'string'
           ? `${arrayItemName}.asString().toString()`
           : elementKind === 'boolean'
-            ? `${arrayItemName}.asBool()`
+            ? `${arrayItemName}.asBool().getValue()`
             : elementKind === 'int32'
               ? `Int32(${arrayItemName}.asInt().getValue())`
               : `${arrayItemName}.asFloat().getValue()`;
@@ -495,9 +502,13 @@ function getReturnTypeInfo(
       };
     case 'TypeAliasTypeAnnotation': {
       const alias = aliasMap[typeAnnotation.name];
-      return alias
-        ? getReturnTypeInfo(alias, aliasMap, enumKindMap)
-        : { kind: 'unknown', isOptional: false };
+      if (alias) {
+        return getReturnTypeInfo(alias, aliasMap, enumKindMap);
+      }
+      if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
+        return { kind: 'int32', isOptional: false };
+      }
+      return { kind: 'unknown', isOptional: false };
     }
     case 'EnumDeclaration':
       return {

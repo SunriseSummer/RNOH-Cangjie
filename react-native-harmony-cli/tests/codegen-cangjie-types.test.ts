@@ -42,6 +42,9 @@ export interface Spec extends TurboModule {
   prefetchImage(uri: string, requestId: number = 0): Promise<boolean>
   abortPrefetch(requestId: number): void
   prefetchImageWithMetadata(uri: string, queryRootName: string, rootTag: number): Promise<boolean>
+  getInt32Value(value: int32): int32
+  getInt32Values(values: Array<int32>): Array<int32>
+  getInt32Async(value: int32): Promise<int32>
   queryCache(uris: Array<string>): Promise<Object>
 }
 
@@ -87,6 +90,9 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieContent).toContain(
       'getSizeWithHeaders(uri: String, headers: String): String'
     );
+    expect(cangjieContent).toContain('getInt32Value(value: Int32): Int32');
+    expect(cangjieContent).toContain('getInt32Values(values: Array<Int32>): Array<Int32>');
+    expect(cangjieContent).toContain('getInt32Async(value: Int32): Int32');
     expect(cangjieContent).toContain('queryCache(uris: Array<String>): String');
 
     expect(cangjieBridgeContent).toContain('if (let Some(value) <- result)');
@@ -97,6 +103,12 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieBridgeContent).toContain('let urisJsonArray = urisJsonValue.asArray()');
     expect(cangjieBridgeContent).toContain(
       'urisArray[urisIndex] = urisArrayItem.asString().toString()'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let valuesArray = Array<Int32>(valuesJsonArray.size(), repeat: 0)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'valuesArray[valuesIndex] = Int32(valuesArrayItem.asInt().getValue())'
     );
     expect(cangjieBridgeContent).toContain('PromiseResolveJson(promise, result)');
 

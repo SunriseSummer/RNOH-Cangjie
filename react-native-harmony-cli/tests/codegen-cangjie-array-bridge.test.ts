@@ -88,7 +88,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
       'let flagsArray = Array<Bool>(flagsJsonArray.size(), repeat: false)'
     );
     expect(cangjieBridgeContent).toContain(
-      'flagsArray[flagsIndex] = flagsArrayItem.asBool()'
+      'flagsArray[flagsIndex] = flagsArrayItem.asBool().getValue()'
     );
   });
 });
