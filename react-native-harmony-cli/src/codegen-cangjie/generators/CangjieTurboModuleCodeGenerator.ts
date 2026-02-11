@@ -981,11 +981,14 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         cangjieTemplate.addImport('stdx.encoding.json.*');
       }
       const defaultParams = new Set<string>(defaultParamMap[methodName] ?? []);
+      const isDefaultParam = (param: {
+        name: string;
+        typeAnnotation: TypeAnnotation;
+      }) => defaultParams.has(param.name) || hasDefaultValue(param.typeAnnotation);
       const stringifiedArgs = prop.typeAnnotation.params
         .map((param) => {
           const resolvedParamType = unwrapWithDefault(param.typeAnnotation);
-          const hasDefaultParam =
-            defaultParams.has(param.name) || hasDefaultValue(param.typeAnnotation);
+          const hasDefaultParam = isDefaultParam(param);
           const signatureTypeAnnotation =
             hasDefaultParam &&
             resolvedParamType.type === 'NullableTypeAnnotation'
@@ -1024,8 +1027,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const cppArgDeclarations: { line: string }[] = [];
       const cppArgNames: string[] = [];
       prop.typeAnnotation.params.forEach((param, index) => {
-        const hasDefaultParam =
-          defaultParams.has(param.name) || hasDefaultValue(param.typeAnnotation);
+        const hasDefaultParam = isDefaultParam(param);
         const cppArg = buildCppArgDeclaration(
           param.name,
           param.typeAnnotation,

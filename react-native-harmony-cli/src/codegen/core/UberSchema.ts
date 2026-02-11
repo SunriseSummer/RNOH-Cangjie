@@ -171,7 +171,14 @@ function collectDefaultParamsByModule(
             if (!ts.isMethodSignature(member)) {
               return;
             }
-            const methodName = member.name.getText(sourceFile);
+            const methodName = ts.isIdentifier(member.name) ||
+              ts.isStringLiteral(member.name) ||
+              ts.isNumericLiteral(member.name)
+              ? member.name.text
+              : null;
+            if (!methodName) {
+              return;
+            }
             member.parameters.forEach((param) => {
               if (!param.initializer) {
                 return;
