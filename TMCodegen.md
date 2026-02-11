@@ -57,7 +57,7 @@ new CangjieTurboModuleCodeGenerator(
 ).generate(schema);
 ```
 
-### 3. 生成模板所在位置
+### 3. 生成文件位置
 
 输出路径由生成器参数决定，默认结构如下：
 
