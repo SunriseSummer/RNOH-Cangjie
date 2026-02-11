@@ -89,12 +89,12 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieContent).toContain('getPrefetchResult(uri: String): ?String');
     expect(cangjieContent).toContain('getSize(uri: String): Array<Float64>');
     expect(cangjieContent).toContain(
-      'getSizeWithHeaders(uri: String, headers: JsonValue): String'
+      'getSizeWithHeaders(uri: String, headers: JsonValue): JsonValue'
     );
     expect(cangjieContent).toContain('getInt32Value(value: Int32): Int32');
     expect(cangjieContent).toContain('getInt32Values(values: Array<Int32>): Array<Int32>');
     expect(cangjieContent).toContain('getInt32Async(value: Int32): Int32');
-    expect(cangjieContent).toContain('queryCache(uris: Array<String>): String');
+    expect(cangjieContent).toContain('queryCache(uris: Array<String>): JsonValue');
     expect(cangjieContent).toContain('sendConfigs(configs: JsonValue): Unit');
 
     expect(cangjieBridgeContent).toContain('if (let Some(value) <- result)');

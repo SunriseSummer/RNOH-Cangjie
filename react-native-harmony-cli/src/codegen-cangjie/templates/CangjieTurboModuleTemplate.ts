@@ -27,7 +27,7 @@ import {{{name}}}
 
 var turboModule: ?{{className}} = None
 
-// 注意：基础数组仍映射为 Array<T>，复杂数组/对象参数在桥接层解析为 JsonValue。
+// 注意：基础数组仍映射为 Array<T>，复杂类型/自定义别名统一映射为 JsonValue。
 
 {{#aliases}}
 type {{name}} = {{{type}}}

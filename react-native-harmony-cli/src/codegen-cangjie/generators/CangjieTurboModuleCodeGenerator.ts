@@ -211,9 +211,16 @@ function isJsonObjectTypeAnnotation(
 
 /**
  * 根据类型注解分类，决定桥接侧的参数处理方式。
+ * 注意：这里会先展开别名/可空类型，保证自定义别名仍按真实类型处理。
  */
-function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
-  const resolved = unwrapNullable(typeAnnotation);
+function getParamKind(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>
+): ParamKind {
+  const resolved = resolveAliasTypeAnnotation(
+    unwrapNullable(typeAnnotation),
+    aliasMap
+  );
   switch (resolved.type) {
     case 'BooleanTypeAnnotation':
       return 'boolean';
@@ -249,8 +256,11 @@ function getParamKind(typeAnnotation: TypeAnnotation): ParamKind {
 /**
  * 获取 C++ 桥接层参数类型（用于回调声明）。
  */
-function getCppBridgeType(typeAnnotation: TypeAnnotation): string {
-  switch (getParamKind(typeAnnotation)) {
+function getCppBridgeType(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>
+): string {
+  switch (getParamKind(typeAnnotation, aliasMap)) {
     case 'string':
     case 'object':
     case 'array':
@@ -269,8 +279,11 @@ function getCppBridgeType(typeAnnotation: TypeAnnotation): string {
 /**
  * 获取 Cangjie FFI 侧参数类型。
  */
-function getCangjieFfiType(typeAnnotation: TypeAnnotation): string {
-  switch (getParamKind(typeAnnotation)) {
+function getCangjieFfiType(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>
+): string {
+  switch (getParamKind(typeAnnotation, aliasMap)) {
     case 'string':
     case 'object':
     case 'array':
@@ -292,10 +305,11 @@ function getCangjieFfiType(typeAnnotation: TypeAnnotation): string {
 function buildCppArgDeclaration(
   paramName: string,
   typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>,
   index: number,
   isOptional: boolean
 ) {
-  const kind = getParamKind(typeAnnotation);
+  const kind = getParamKind(typeAnnotation, aliasMap);
   // 可选/可空参数使用默认值并做 isX 检查，避免直接读取导致崩溃。
   const needsGuard = isOptional || typeAnnotation.type === 'NullableTypeAnnotation';
   switch (kind) {
@@ -372,18 +386,22 @@ function buildCppArgDeclaration(
     case 'unknown':
     default: {
       const jsonName = `${paramName}Json`;
-      const defaultJson =
-        kind === 'array' ? DEFAULT_EMPTY_JSON_ARRAY : DEFAULT_EMPTY_JSON_OBJECT;
+      const isArrayType =
+        resolveArrayTypeAnnotation(typeAnnotation, aliasMap) !== null;
+      const defaultJson = isArrayType
+        ? DEFAULT_EMPTY_JSON_ARRAY
+        : DEFAULT_EMPTY_JSON_OBJECT;
       return {
         callArg: `${jsonName}.c_str()`,
         lines: [
           `const std::string ${jsonName}DefaultValue = "${defaultJson}";`,
           `std::string ${jsonName} = ${jsonName}DefaultValue;`,
-          `if (count > ${index} && args[${index}].isObject()) {`,
-            `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
-            `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
-            `  auto jsonString = stringify.call(rt, args[${index}]);`,
-            `  if (jsonString.isString()) {`,
+          // 复杂类型统一走 JSON.stringify，确保字符串/数字也能安全转为 JsonValue。
+          `if (count > ${index} && !args[${index}].isUndefined()) {`,
+          `  auto jsonObj = rt.global().getPropertyAsObject(rt, "JSON");`,
+          `  auto stringify = jsonObj.getPropertyAsFunction(rt, "stringify");`,
+          `  auto jsonString = stringify.call(rt, args[${index}]);`,
+          `  if (jsonString.isString()) {`,
           `    ${jsonName} = jsonString.asString(rt).utf8(rt);`,
           `  }`,
           `}`,
@@ -423,6 +441,11 @@ function buildCangjieArgConversion(
   const stringValueName = `${paramName}Value`;
   const lines = [`let ${stringValueName} = ${paramName}.toString()`];
   const arrayType = resolveArrayTypeAnnotation(typeAnnotation, aliasMap);
+  const useJsonValue = shouldUseJsonValueForParam(
+    typeAnnotation,
+    aliasMap,
+    enumKindMap
+  );
   if (arrayType && arrayType.elementType) {
     const elementKind = getArrayElementKind(
       arrayType.elementType,
@@ -474,21 +497,9 @@ function buildCangjieArgConversion(
       };
     }
   }
-  if (arrayType) {
+  if (useJsonValue) {
     const jsonValueName = `${paramName}JsonValue`;
-    // 非基础元素数组仅需解析为 JsonValue，交由业务层自行转换。
-    lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
-    return {
-      convertedName: jsonValueName,
-      lines,
-      needsJsonStreamImport: false,
-      needsStdIoImport: false,
-      needsJsonImport: true,
-    };
-  }
-  if (isJsonObjectTypeAnnotation(typeAnnotation, aliasMap)) {
-    const jsonValueName = `${paramName}JsonValue`;
-    // Object 参数需要把 JSON 字符串直接解析成 JsonValue，交由业务层继续取值。
+    // 复杂类型统一解析为 JsonValue，避免业务侧重复手动 JSON 解析。
     lines.push(`let ${jsonValueName} = JsonValue.fromStr(${stringValueName})`);
     return {
       convertedName: jsonValueName,
@@ -508,8 +519,42 @@ function buildCangjieArgConversion(
 }
 
 /**
+ * 判断参数是否需要映射为 JsonValue。
+ * 包括：对象/联合/混合类型、嵌套数组、自定义别名（无法归并到基础类型）。
+ */
+function shouldUseJsonValueForParam(
+  typeAnnotation: TypeAnnotation,
+  aliasMap: Record<string, TypeAnnotation>,
+  enumKindMap: Map<string, ReturnKind>
+): boolean {
+  if (isJsonObjectTypeAnnotation(typeAnnotation, aliasMap)) {
+    return true;
+  }
+  const resolved = resolveAliasTypeAnnotation(
+    unwrapNullable(typeAnnotation),
+    aliasMap
+  );
+  if (resolved.type === 'ArrayTypeAnnotation') {
+    return shouldUseJsonValueForArray(resolved, aliasMap, enumKindMap);
+  }
+  if (resolved.type === 'ReservedTypeAnnotation') {
+    return resolved.name !== 'RootTag';
+  }
+  if (resolved.type === 'TypeAliasTypeAnnotation') {
+    // 未能解析的自定义别名直接当作 JsonValue。
+    return true;
+  }
+  return (
+    resolved.type === 'UnionTypeAnnotation' ||
+    resolved.type === 'MixedTypeAnnotation' ||
+    resolved.type === 'ReservedPropTypeAnnotation' ||
+    resolved.type === 'FunctionTypeAnnotation'
+  );
+}
+
+/**
  * 解析返回类型，决定同步返回/Promise Resolve 的包装策略。
- * 复杂对象与数组使用 JSON 字符串回传，保持 JS 侧结构一致。
+ * 复杂类型统一按 JsonValue 处理，再序列化为 JSON 字符串回传。
  */
 function getReturnTypeInfo(
   typeAnnotation: TypeAnnotation,
@@ -562,10 +607,11 @@ function getReturnTypeInfo(
     case 'UnionTypeAnnotation':
     case 'MixedTypeAnnotation':
     case 'ReservedPropTypeAnnotation':
+    case 'FunctionTypeAnnotation':
       return { kind: 'json', isOptional: false };
     case 'ReservedTypeAnnotation':
       return {
-        kind: typeAnnotation.name === 'RootTag' ? 'int32' : 'unknown',
+        kind: typeAnnotation.name === 'RootTag' ? 'int32' : 'json',
         isOptional: false,
       };
     case 'TypeAliasTypeAnnotation': {
@@ -576,7 +622,7 @@ function getReturnTypeInfo(
       if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
         return { kind: 'int32', isOptional: false };
       }
-      return { kind: 'unknown', isOptional: false };
+      return { kind: 'json', isOptional: false };
     }
     case 'EnumDeclaration':
       return {
@@ -586,9 +632,9 @@ function getReturnTypeInfo(
     case 'PromiseTypeAnnotation':
       return typeAnnotation.elementType
         ? getReturnTypeInfo(typeAnnotation.elementType, aliasMap, enumKindMap)
-        : { kind: 'unknown', isOptional: false };
+        : { kind: 'json', isOptional: false };
     default:
-      return { kind: 'unknown', isOptional: false };
+      return { kind: 'json', isOptional: false };
   }
 }
 
@@ -862,10 +908,14 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
     );
 
     Object.entries(schema.aliasMap).forEach(([name, typeAnnotation]) => {
+      const aliasType = typeAnnotationToCangjie.convert(typeAnnotation);
       cangjieTemplate.addAlias({
         name,
-        type: typeAnnotationToCangjie.convert(typeAnnotation),
+        type: aliasType,
       });
+      if (aliasType.includes('JsonValue')) {
+        cangjieTemplate.addImport('stdx.encoding.json.*');
+      }
     });
 
     Object.entries(schema.enumMap).forEach(([name, enumSpec]) => {
@@ -900,23 +950,21 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const returnType = typeAnnotationToCangjie.convertReturnType(
         returnTypeAnnotation
       );
+      if (returnType.includes('JsonValue')) {
+        cangjieTemplate.addImport('stdx.encoding.json.*');
+      }
       const stringifiedArgs = prop.typeAnnotation.params
         .map((param) => {
-          const isObjectParam = isJsonObjectTypeAnnotation(
-            param.typeAnnotation,
-            schema.aliasMap
-          );
-          const useJsonValueForArray = shouldUseJsonValueForArray(
+          const useJsonValue = shouldUseJsonValueForParam(
             param.typeAnnotation,
             schema.aliasMap,
             enumKindMap
           );
-          // Object/非基础数组类型需要映射为 JsonValue，便于业务侧直接获取结构化 JSON。
-          const rawType =
-            isObjectParam || useJsonValueForArray
-              ? 'JsonValue'
-              : typeAnnotationToCangjie.convert(param.typeAnnotation);
-          if (isObjectParam || useJsonValueForArray) {
+          // 复杂类型（含自定义别名/嵌套数组）统一使用 JsonValue，业务侧自行解析。
+          const rawType = useJsonValue
+            ? 'JsonValue'
+            : typeAnnotationToCangjie.convert(param.typeAnnotation);
+          if (useJsonValue) {
             cangjieTemplate.addImport('stdx.encoding.json.*');
           }
           // 可选参数在 Cangjie 侧用 ?Type 表示，提醒业务处理 None。
@@ -942,6 +990,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
         const cppArg = buildCppArgDeclaration(
           param.name,
           param.typeAnnotation,
+          schema.aliasMap,
           index,
           param.optional
         );
@@ -971,7 +1020,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const cppBridgeParams = prop.typeAnnotation.params
         .map(
           (param) =>
-            `${getCppBridgeType(param.typeAnnotation)} ${param.name}`
+            `${getCppBridgeType(param.typeAnnotation, schema.aliasMap)} ${param.name}`
         )
         .join(', ');
       const cppBridgeParamsWithPromise = cppBridgeParams.length
@@ -1027,7 +1076,7 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
 
       const cangjieFfiParams = prop.typeAnnotation.params.map((param) => ({
         name: param.name,
-        ffiType: getCangjieFfiType(param.typeAnnotation),
+        ffiType: getCangjieFfiType(param.typeAnnotation, schema.aliasMap),
         typeAnnotation: param.typeAnnotation,
       }));
       const cangjieParams = cangjieFfiParams
