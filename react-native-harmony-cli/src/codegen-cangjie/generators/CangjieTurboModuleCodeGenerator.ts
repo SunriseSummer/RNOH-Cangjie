@@ -685,7 +685,7 @@ function buildAsyncResolveLines(returnTypeInfo: ReturnTypeInfo) {
     }
     if (info.kind === 'json') {
       return {
-        lines: [`PromiseResolveJson(promise, ${valueName})`],
+        lines: [`PromiseResolve(promise, ${valueName})`],
         needsJsonImport: false,
       };
     }

@@ -118,7 +118,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieBridgeContent).toContain(
       'let configsJsonValue = JsonValue.fromStr(configsValue)'
     );
-    expect(cangjieBridgeContent).toContain('PromiseResolveJson(promise, result)');
+    expect(cangjieBridgeContent).toContain('PromiseResolve(promise, result)');
 
     expect(cppContent).toContain('double requestId = 0.0');
     expect(cppContent).toContain('if (count > 1 && args[1].isNumber())');

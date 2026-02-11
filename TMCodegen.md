@@ -66,7 +66,7 @@ SampleBridge::getSize(promiseHolder, uri.c_str());
 return asyncPromise->get(rt);
 ```
 
-## 3. Object 参数 / Object 返回（JSON 字符串桥接）
+## 3. Object 参数 / Object 返回（JsonValue 桥接）
 
 **接口声明**
 ```ts
@@ -91,13 +91,13 @@ if (count > 1 && args[1].isObject()) {
 
 **生成的 Cangjie 方法签名**
 ```cangjie
-public func getSizeWithHeaders(uri: String, headers: String): String
+public func getSizeWithHeaders(uri: String, headers: JsonValue): JsonValue
 ```
 
 **生成的 Cangjie bridge 片段**
 ```cangjie
-let result = module.getSizeWithHeaders(uriValue, headersValue)
-PromiseResolveJson(promise, result.toString())
+let result = module.getSizeWithHeaders(uriValue, headersJsonValue)
+PromiseResolve(promise, result)
 ```
 
 ## 4. Array<string> 参数（JSON → Array<String>）
@@ -126,10 +126,16 @@ if (count > 0 && args[0].isObject()) {
 **生成的 Cangjie bridge 片段**
 ```cangjie
 let urisValue = uris.toString()
-let urisReader = JsonReader(ByteBuffer(unsafe { urisValue.rawData() }))
-let urisArray = urisReader.readValue<Array<String>>()
+let urisJsonValue = JsonValue.fromStr(urisValue)
+let urisJsonArray = urisJsonValue.asArray()
+let urisArray = Array<String>(urisJsonArray.size(), repeat: "")
+var urisIndex = 0
+for (urisArrayItem in urisJsonArray) {
+  urisArray[urisIndex] = urisArrayItem.asString().toString()
+  urisIndex += 1
+}
 let result = module.queryCache(urisArray)
-PromiseResolveJson(promise, result.toString())
+PromiseResolve(promise, result)
 ```
 
 ## 5. 默认参数（接口声明可直接使用 `=`）

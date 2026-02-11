@@ -107,6 +107,6 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieBridgeContent).toContain(
       'let stringsJsonArray = stringsJsonValue.asArray()'
     );
-    expect(cangjieBridgeContent).toContain('PromiseResolveJson(promise, result)');
+    expect(cangjieBridgeContent).toContain('PromiseResolve(promise, result)');
   });
 });
