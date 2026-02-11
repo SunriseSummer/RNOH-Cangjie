@@ -13,7 +13,7 @@ import { UberSchema } from '../src/codegen';
 import { CangjieTurboModuleCodeGenerator } from '../src/codegen-cangjie';
 
 /**
- * 覆盖 Array 参数的 JSON 解析路径，确保 JsonValue/JsonArray 逻辑生成正确。
+ * 覆盖 Array 参数的 JSON 解析路径，确保 JsonValue 逻辑生成正确。
  */
 describe('CangjieTurboModuleCodeGenerator array conversions', () => {
   let tmpDir: tmp.DirResult | null = null;
@@ -23,10 +23,11 @@ describe('CangjieTurboModuleCodeGenerator array conversions', () => {
   });
 
   afterEach(() => {
+    tmpDir?.removeCallback();
     tmpDir = null;
   });
 
-  it('generates JsonValue-based array parsing for string/number aliases', () => {
+  it('generates typed array parsing and JsonValue fallback for complex arrays', () => {
     const tempDirPath = tmpDir!.name;
     const specPath = path.join(tempDirPath, 'NativeArraySpec.ts');
     fs.writeFileSync(
@@ -41,6 +42,7 @@ export interface Spec extends TurboModule {
   queryStrings(uris: StringList): Promise<Object>;
   queryNumbers(values: Array<number>): Promise<Object>;
   queryFlags(flags: Array<boolean>): Promise<Object>;
+  queryObjects(items: Array<Object>): Promise<Object>;
 }
 
 export default TurboModuleRegistry.get<Spec>('Sample')!;
@@ -89,6 +91,9 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     );
     expect(cangjieBridgeContent).toContain(
       'flagsArray[flagsIndex] = flagsArrayItem.asBool().getValue()'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let itemsJsonValue = JsonValue.fromStr(itemsValue)'
     );
   });
 });
