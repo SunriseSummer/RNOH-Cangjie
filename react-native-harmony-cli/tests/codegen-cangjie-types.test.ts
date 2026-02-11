@@ -89,12 +89,15 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieContent).toContain('getPrefetchResult(uri: String): ?String');
     expect(cangjieContent).toContain('getSize(uri: String): Array<Float64>');
     expect(cangjieContent).toContain(
-      'getSizeWithHeaders(uri: String, headers: JsonValue): String'
+      'getSizeWithHeaders(uri: String, headers: JsonValue): JsonValue'
     );
     expect(cangjieContent).toContain('getInt32Value(value: Int32): Int32');
     expect(cangjieContent).toContain('getInt32Values(values: Array<Int32>): Array<Int32>');
     expect(cangjieContent).toContain('getInt32Async(value: Int32): Int32');
-    expect(cangjieContent).toContain('queryCache(uris: Array<String>): String');
+    expect(cangjieContent).toContain(
+      'prefetchImage(uri: String, requestId: Float64): Bool'
+    );
+    expect(cangjieContent).toContain('queryCache(uris: Array<String>): JsonValue');
     expect(cangjieContent).toContain('sendConfigs(configs: JsonValue): Unit');
 
     expect(cangjieBridgeContent).toContain('if (let Some(value) <- result)');
@@ -118,7 +121,7 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieBridgeContent).toContain(
       'let configsJsonValue = JsonValue.fromStr(configsValue)'
     );
-    expect(cangjieBridgeContent).toContain('PromiseResolveJson(promise, result)');
+    expect(cangjieBridgeContent).toContain('PromiseResolve(promise, result)');
 
     expect(cppContent).toContain('double requestId = 0.0');
     expect(cppContent).toContain('if (count > 1 && args[1].isNumber())');

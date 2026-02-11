@@ -126,11 +126,3 @@ public func PromiseResolve(promise: PromiseHolder, data: JsonValue): Unit {
         CJ_PromiseResolve(promise, CJ_Object(CPointer<Unit>(cJsonDataString), CJ_ObjectKind))
     }
 }
-
-// 直接透传 JSON 字符串，不做解析或校验
-public func PromiseResolveJson(promise: PromiseHolder, json: String): Unit {
-    unsafe {
-        let cJsonDataString = LibC.mallocCString(json).getChars()
-        CJ_PromiseResolve(promise, CJ_Object(CPointer<Unit>(cJsonDataString), CJ_ObjectKind))
-    }
-}

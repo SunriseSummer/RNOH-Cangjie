@@ -15,7 +15,7 @@ export class TypeAnnotationToCangjie {
   constructor(private aliasMap?: Record<string, TypeAnnotation>) {}
 
   /**
-   * 数组元素允许映射到 Cangjie 的基础类型，超出范围则回退为 JSON 字符串。
+   * 数组元素允许映射到 Cangjie 的基础类型，超出范围则交由 JsonValue 统一承载。
    */
   private convertArrayElement(typeAnnotation: TypeAnnotation): string | null {
     switch (typeAnnotation.type) {
@@ -42,15 +42,17 @@ export class TypeAnnotationToCangjie {
         const alias = this.aliasMap?.[typeAnnotation.name];
         return alias ? this.convertArrayElement(alias) : null;
       }
+      case 'WithDefaultTypeAnnotation':
+        return this.convertArrayElement(typeAnnotation.typeAnnotation);
       default:
-        // 复杂对象/嵌套数组统一回退为 JSON 字符串处理。
+        // 复杂对象/嵌套数组在数组场景中交由 JsonValue 处理。
         return null;
     }
   }
 
   /**
    * 将类型注解转换为 Cangjie 参数类型。
-   * 缺省时返回 String，确保模板具备可编译性。
+   * 缺省时返回 JsonValue，确保复杂类型仍可被业务层接管。
    */
   convert(typeAnnotation: TypeAnnotation | undefined): string {
     if (!typeAnnotation) {
@@ -77,35 +79,41 @@ export class TypeAnnotationToCangjie {
       case 'NullableTypeAnnotation':
         return `?${this.convert(typeAnnotation.typeAnnotation)}`;
       case 'ArrayTypeAnnotation': {
-        // 常见基础数组支持转换为 Cangjie Array<T>，复杂类型回退为 JSON 字符串。
+        // 常见基础数组支持转换为 Cangjie Array<T>，复杂类型统一交由 JsonValue。
         const elementType = typeAnnotation.elementType
           ? this.convertArrayElement(typeAnnotation.elementType)
           : null;
-        return elementType ? `Array<${elementType}>` : 'String';
+        return elementType ? `Array<${elementType}>` : 'JsonValue';
       }
-      case 'TypeAliasTypeAnnotation':
-        return typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32'
-          ? 'Int32'
-          : typeAnnotation.name;
+      case 'WithDefaultTypeAnnotation':
+        return this.convert(typeAnnotation.typeAnnotation);
+      case 'TypeAliasTypeAnnotation': {
+        if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
+          return 'Int32';
+        }
+        const alias = this.aliasMap?.[typeAnnotation.name];
+        // 自定义别名若能解析则递归转换，否则直接降级为 JsonValue。
+        return alias ? this.convert(alias) : 'JsonValue';
+      }
       case 'ReservedTypeAnnotation':
         if (typeAnnotation.name === 'RootTag') {
           return 'Int32';
         }
-        return 'String';
+        return 'JsonValue';
       case 'ReservedPropTypeAnnotation':
       case 'ObjectTypeAnnotation':
       case 'UnionTypeAnnotation':
       case 'GenericObjectTypeAnnotation':
       case 'MixedTypeAnnotation':
       case 'FunctionTypeAnnotation':
-        // 复杂类型统一使用 JSON 字符串占位，避免桥接层类型不匹配。
-        return 'String';
+        // 复杂类型统一使用 JsonValue，占位交由业务层自行解析。
+        return 'JsonValue';
       case 'PromiseTypeAnnotation':
         return this.convert(typeAnnotation.elementType);
       case 'VoidTypeAnnotation':
         return 'Unit';
       default:
-        return 'String';
+        return 'JsonValue';
     }
   }
 

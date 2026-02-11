@@ -13,10 +13,9 @@ import { UberSchema } from '../src/codegen';
 import { CangjieTurboModuleCodeGenerator } from '../src/codegen-cangjie';
 
 /**
- * 覆盖 Object 参数的 JsonValue 解析，确保可选/同步/异步场景生成正确。
+ * 覆盖复杂类型/自定义别名/嵌套数组的 JsonValue 映射，确保桥接逻辑稳定。
  */
-
-describe('CangjieTurboModuleCodeGenerator object conversions', () => {
+describe('CangjieTurboModuleCodeGenerator JsonValue mappings', () => {
   let tmpDir: tmp.DirResult | null = null;
 
   beforeEach(() => {
@@ -28,19 +27,27 @@ describe('CangjieTurboModuleCodeGenerator object conversions', () => {
     tmpDir = null;
   });
 
-  it('generates JsonValue parameter types and conversions for object inputs', () => {
+  it('maps custom aliases and nested arrays to JsonValue', () => {
     const tempDirPath = tmpDir!.name;
-    const specPath = path.join(tempDirPath, 'NativeObjectSpec.ts');
+    const specPath = path.join(tempDirPath, 'NativeJsonValueSpec.ts');
     fs.writeFileSync(
       specPath,
       `
 import type { TurboModule } from 'react-native/Libraries/TurboModule/RCTExport';
 import { TurboModuleRegistry } from 'react-native';
 
+export type UserInfo = Object;
+export type NestedNumbers = Array<Array<number>>;
+export type AliasArray = Array<string>;
+export type AliasNumber = number;
+
 export interface Spec extends TurboModule {
-  setConfig(config: Object): void;
-  updateConfig(config?: Object): Promise<Object>;
-  mergeConfig(config: Object, meta?: Object): Promise<void>;
+  sendUser(user: UserInfo): void;
+  sendNested(nestedValues: NestedNumbers): void;
+  sendAliasArray(strings: AliasArray): void;
+  sendAliasNumber(count: AliasNumber): void;
+  getUser(): Promise<UserInfo>;
+  getNested(): Promise<NestedNumbers>;
 }
 
 export default TurboModuleRegistry.get<Spec>('Sample')!;
@@ -77,19 +84,29 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     const cangjieBridgeContent = getContent(cangjieBridgePath);
 
     expect(cangjieContent).toContain('import stdx.encoding.json.*');
-    expect(cangjieContent).toContain('setConfig(config: JsonValue): Unit');
+    expect(cangjieContent).toContain('sendUser(user: JsonValue): Unit');
     expect(cangjieContent).toContain(
-      'updateConfig(config: ?JsonValue): JsonValue'
+      'sendNested(nestedValues: JsonValue): Unit'
     );
     expect(cangjieContent).toContain(
-      'mergeConfig(config: JsonValue, meta: ?JsonValue): Unit'
+      'sendAliasArray(strings: Array<String>): Unit'
     );
+    expect(cangjieContent).toContain('sendAliasNumber(count: Float64): Unit');
+    expect(cangjieContent).toContain('getUser(): JsonValue');
+    expect(cangjieContent).toContain('getNested(): JsonValue');
 
     expect(cangjieBridgeContent).toContain(
-      'let configJsonValue = JsonValue.fromStr(configValue)'
+      'let userJsonValue = JsonValue.fromStr(userValue)'
     );
     expect(cangjieBridgeContent).toContain(
-      'let metaJsonValue = JsonValue.fromStr(metaValue)'
+      'let nestedValuesJsonValue = JsonValue.fromStr(nestedValuesValue)'
     );
+    expect(cangjieBridgeContent).toContain(
+      'let stringsJsonValue = JsonValue.fromStr(stringsValue)'
+    );
+    expect(cangjieBridgeContent).toContain(
+      'let stringsJsonArray = stringsJsonValue.asArray()'
+    );
+    expect(cangjieBridgeContent).toContain('PromiseResolve(promise, result)');
   });
 });
