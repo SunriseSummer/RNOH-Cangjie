@@ -21,6 +21,7 @@ import {
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import ts from 'typescript';
 // @ts-expect-error
 import extractUberSchemaFromSpecFilePaths_ from '@react-native/codegen/lib/cli/combine/combine-js-to-schema.js';
 import { CodegenError } from './CodegenError';
@@ -28,6 +29,9 @@ import { CodegenError } from './CodegenError';
 const DEFAULT_PARAM_REGEX =
   /(\b[$A-Za-z_][\w$]*)(\s*\?)?\s*:\s*([^,)=]+?)\s*=\s*([^,)]+)/g;
 const INT32_TYPE_REGEX = /\bint32\b/g;
+
+type DefaultParamMap = Record<string, string[]>;
+type DefaultParamMapByModule = Record<string, DefaultParamMap>;
 
 /**
  * 仅接受简单字面量作为默认值（字符串/数值/布尔/null）。
@@ -115,12 +119,109 @@ function prepareSpecFilePaths(
   });
 }
 
+/**
+ * 解析 TS spec 源码，提取含默认值的参数信息（按模块与方法归类）。
+ */
+function collectDefaultParamsByModule(
+  projectSourceFilePaths: AbsolutePath[]
+): DefaultParamMapByModule {
+  const result: DefaultParamMapByModule = {};
+  projectSourceFilePaths.forEach((specPath) => {
+    const filePath = specPath.getValue();
+    const ext = path.extname(filePath);
+    if (ext !== '.ts' && ext !== '.tsx') {
+      return;
+    }
+    const source = fs.readFileSync(filePath, 'utf8');
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      ext === '.tsx' ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+    );
+    let moduleName: string | null = null;
+    const defaultParams = new Map<string, Set<string>>();
+
+    const visit = (node: ts.Node) => {
+      if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
+        const target = node.expression;
+        if (
+          ts.isIdentifier(target.expression) &&
+          target.expression.text === 'TurboModuleRegistry' &&
+          target.name.text === 'get'
+        ) {
+          const arg = node.arguments[0];
+          if (arg && (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg))) {
+            moduleName = arg.text;
+          }
+        }
+      }
+      if (ts.isInterfaceDeclaration(node)) {
+        const extendsTurboModule = node.heritageClauses?.some((clause) =>
+          clause.types.some(
+            (type) =>
+              ts.isExpressionWithTypeArguments(type) &&
+              ts.isIdentifier(type.expression) &&
+              type.expression.text === 'TurboModule'
+          )
+        );
+        if (extendsTurboModule) {
+          node.members.forEach((member) => {
+            if (!ts.isMethodSignature(member)) {
+              return;
+            }
+            const methodName = member.name.getText(sourceFile);
+            member.parameters.forEach((param) => {
+              if (!param.initializer) {
+                return;
+              }
+              const paramName = param.name.getText(sourceFile);
+              if (!defaultParams.has(methodName)) {
+                defaultParams.set(methodName, new Set());
+              }
+              defaultParams.get(methodName)?.add(paramName);
+            });
+          });
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+
+    visit(sourceFile);
+    if (!moduleName || defaultParams.size === 0) {
+      return;
+    }
+    const resolvedModuleName = moduleName;
+    if (!result[resolvedModuleName]) {
+      result[resolvedModuleName] = {};
+    }
+    defaultParams.forEach((params, methodName) => {
+      result[resolvedModuleName][methodName] = Array.from(params);
+    });
+  });
+  return result;
+}
+
 function createRawUberSchemaFromSpecFilePaths(
   projectSourceFilePaths: AbsolutePath[]
 ): RawUberSchema {
-  return extractUberSchemaFromSpecFilePaths_(
+  const rawSchema = extractUberSchemaFromSpecFilePaths_(
     prepareSpecFilePaths(projectSourceFilePaths).map((p) => p.getValue())
   );
+  const defaultParamsByModule = collectDefaultParamsByModule(projectSourceFilePaths);
+  Object.entries(defaultParamsByModule).forEach(([moduleName, paramMap]) => {
+    Object.values(rawSchema.modules).forEach((moduleSchema) => {
+      const typedSchema = moduleSchema as SpecSchema & {
+        rnohDefaultParams?: DefaultParamMap;
+        moduleName?: string;
+      };
+      if (typedSchema.moduleName === moduleName) {
+        typedSchema.rnohDefaultParams = paramMap;
+      }
+    });
+  });
+  return rawSchema;
 }
 
 export type SpecSchema = ComponentSchema | NativeModuleSchema;

@@ -61,13 +61,31 @@ type SyncReturnInfo = {
 };
 
 /**
- * 处理可空类型，便于后续按实际类型分支。
+ * 展开默认值类型（WithDefault），便于后续按真实类型分支处理。
  */
-function unwrapNullable(typeAnnotation: TypeAnnotation): TypeAnnotation {
-  if (typeAnnotation.type === 'NullableTypeAnnotation') {
+function unwrapWithDefault(typeAnnotation: TypeAnnotation): TypeAnnotation {
+  if (typeAnnotation.type === 'WithDefaultTypeAnnotation') {
     return typeAnnotation.typeAnnotation;
   }
   return typeAnnotation;
+}
+
+/**
+ * 处理可空类型，便于后续按实际类型分支。
+ */
+function unwrapNullable(typeAnnotation: TypeAnnotation): TypeAnnotation {
+  const resolved = unwrapWithDefault(typeAnnotation);
+  if (resolved.type === 'NullableTypeAnnotation') {
+    return resolved.typeAnnotation;
+  }
+  return resolved;
+}
+
+/**
+ * 判断参数是否携带默认值包装，用于区分 Option 与默认参数。
+ */
+function hasDefaultValue(typeAnnotation: TypeAnnotation): boolean {
+  return typeAnnotation.type === 'WithDefaultTypeAnnotation';
 }
 
 /**
@@ -307,11 +325,16 @@ function buildCppArgDeclaration(
   typeAnnotation: TypeAnnotation,
   aliasMap: Record<string, TypeAnnotation>,
   index: number,
-  isOptional: boolean
+  isOptional: boolean,
+  hasDefaultParam: boolean
 ) {
   const kind = getParamKind(typeAnnotation, aliasMap);
+  const resolvedTypeAnnotation = unwrapWithDefault(typeAnnotation);
   // 可选/可空参数使用默认值并做 isX 检查，避免直接读取导致崩溃。
-  const needsGuard = isOptional || typeAnnotation.type === 'NullableTypeAnnotation';
+  const needsGuard =
+    isOptional ||
+    hasDefaultParam ||
+    resolvedTypeAnnotation.type === 'NullableTypeAnnotation';
   switch (kind) {
     case 'string':
       if (needsGuard) {
@@ -930,6 +953,10 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       enumKindMap.set(name, enumType === 'Int32' ? 'int32' : 'string');
     });
 
+    const defaultParamMap =
+      (schema as { rnohDefaultParams?: Record<string, string[]> })
+        .rnohDefaultParams ?? {};
+
     schema.spec.properties.forEach((prop) => {
       if (prop.typeAnnotation.type !== 'FunctionTypeAnnotation') {
         return;
@@ -953,8 +980,17 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       if (returnType.includes('JsonValue')) {
         cangjieTemplate.addImport('stdx.encoding.json.*');
       }
+      const defaultParams = new Set<string>(defaultParamMap[methodName] ?? []);
       const stringifiedArgs = prop.typeAnnotation.params
         .map((param) => {
+          const resolvedParamType = unwrapWithDefault(param.typeAnnotation);
+          const hasDefaultParam =
+            defaultParams.has(param.name) || hasDefaultValue(param.typeAnnotation);
+          const signatureTypeAnnotation =
+            hasDefaultParam &&
+            resolvedParamType.type === 'NullableTypeAnnotation'
+              ? resolvedParamType.typeAnnotation
+              : resolvedParamType;
           const useJsonValue = shouldUseJsonValueForParam(
             param.typeAnnotation,
             schema.aliasMap,
@@ -963,14 +999,15 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
           // 复杂类型（含自定义别名/嵌套数组）统一使用 JsonValue，业务侧自行解析。
           const rawType = useJsonValue
             ? 'JsonValue'
-            : typeAnnotationToCangjie.convert(param.typeAnnotation);
+            : typeAnnotationToCangjie.convert(signatureTypeAnnotation);
           if (useJsonValue) {
             cangjieTemplate.addImport('stdx.encoding.json.*');
           }
           // 可选参数在 Cangjie 侧用 ?Type 表示，提醒业务处理 None。
           const needsOptional =
+            !hasDefaultParam &&
             (param.optional ||
-              param.typeAnnotation.type === 'NullableTypeAnnotation') &&
+              resolvedParamType.type === 'NullableTypeAnnotation') &&
             !rawType.startsWith('?');
           const cangjieType = needsOptional ? `?${rawType}` : rawType;
           return `${param.name}: ${cangjieType}`;
@@ -987,12 +1024,15 @@ export class CangjieTurboModuleCodeGenerator implements SpecCodeGenerator {
       const cppArgDeclarations: { line: string }[] = [];
       const cppArgNames: string[] = [];
       prop.typeAnnotation.params.forEach((param, index) => {
+        const hasDefaultParam =
+          defaultParams.has(param.name) || hasDefaultValue(param.typeAnnotation);
         const cppArg = buildCppArgDeclaration(
           param.name,
           param.typeAnnotation,
           schema.aliasMap,
           index,
-          param.optional
+          param.optional,
+          hasDefaultParam
         );
         cppArgDeclarations.push(...cppArg.lines.map((line) => ({ line })));
         cppArgNames.push(cppArg.callArg);

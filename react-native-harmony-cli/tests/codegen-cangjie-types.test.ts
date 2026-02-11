@@ -94,6 +94,9 @@ export default TurboModuleRegistry.get<Spec>('Sample')!;
     expect(cangjieContent).toContain('getInt32Value(value: Int32): Int32');
     expect(cangjieContent).toContain('getInt32Values(values: Array<Int32>): Array<Int32>');
     expect(cangjieContent).toContain('getInt32Async(value: Int32): Int32');
+    expect(cangjieContent).toContain(
+      'prefetchImage(uri: String, requestId: Float64): Bool'
+    );
     expect(cangjieContent).toContain('queryCache(uris: Array<String>): JsonValue');
     expect(cangjieContent).toContain('sendConfigs(configs: JsonValue): Unit');
 

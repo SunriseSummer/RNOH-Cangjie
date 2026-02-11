@@ -50,7 +50,14 @@ export type TypeAnnotation =
   | ArrayTypeAnnotation
   | NativeModuleTypeAnnotation
   | Nullable<NativeModuleTypeAnnotation>
-  | ObjectTypeAnnotation<TypeAnnotation>;
+  | ObjectTypeAnnotation<TypeAnnotation>
+  | WithDefaultTypeAnnotation;
+
+type WithDefaultTypeAnnotation = {
+  readonly type: 'WithDefaultTypeAnnotation';
+  readonly default: unknown;
+  readonly typeAnnotation: TypeAnnotation;
+};
 
 export class TypeAnnotationToTS {
   constructor(private aliasPrefix: string = '') {}
@@ -136,6 +143,8 @@ export class TypeAnnotationToTS {
         return 'void';
       case 'ArrayTypeAnnotation':
         return `${this.convert(typeAnnotation.elementType)}[]`;
+      case 'WithDefaultTypeAnnotation':
+        return this.convert(typeAnnotation.typeAnnotation);
       default:
         return 'unknown';
     }

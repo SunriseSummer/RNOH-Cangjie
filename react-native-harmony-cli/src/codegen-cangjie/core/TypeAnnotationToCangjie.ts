@@ -42,6 +42,8 @@ export class TypeAnnotationToCangjie {
         const alias = this.aliasMap?.[typeAnnotation.name];
         return alias ? this.convertArrayElement(alias) : null;
       }
+      case 'WithDefaultTypeAnnotation':
+        return this.convertArrayElement(typeAnnotation.typeAnnotation);
       default:
         // 复杂对象/嵌套数组在数组场景中交由 JsonValue 处理。
         return null;
@@ -83,6 +85,8 @@ export class TypeAnnotationToCangjie {
           : null;
         return elementType ? `Array<${elementType}>` : 'JsonValue';
       }
+      case 'WithDefaultTypeAnnotation':
+        return this.convert(typeAnnotation.typeAnnotation);
       case 'TypeAliasTypeAnnotation': {
         if (typeAnnotation.name === 'int32' || typeAnnotation.name === 'Int32') {
           return 'Int32';
